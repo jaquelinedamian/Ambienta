@@ -1,0 +1,49 @@
+{% extends 'base/base.html' %}
+{% load static %}
+
+{% block title %}Ambienta - Home{% endblock %}
+
+{% block content %}
+<main>
+    <section class="hero text-center py-5">
+        <div class="container">
+            <h1 class="display-4 ">Soluções Sustentáveis e Acessíveis</h1>
+            <p class="lead ">Projeto desenvolvido pelos alunos do curso de engenharia da UNIVESP</p>
+            <a href="{% url 'dashboard_view' %}" class="btn btn-primary btn-lg mt-3">Veja nosso Dashboard</a>
+        </div>
+        <br>
+                <div class="container">
+
+            <div class="row text-center">
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 p-4 shadow-sm">
+                        <img src="{% static 'img/sensor-icon.svg' %}" alt="Sensor" class="icon-img mx-auto mb-3">
+                        <h4>Monitoramento de Sensores</h4>
+                        <p>Receba dados de temperatura e umidade em tempo real do seu ambiente.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 p-4 shadow-sm">
+                        <img src="{% static 'img/automacao-icon.svg' %}" alt="Automação" class="icon-img mx-auto mb-3">
+                        <h4>Controle Automatizado</h4>
+                        <p>Ligue e desligue dispositivos automaticamente com base em regras personalizadas.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 p-4 shadow-sm">
+                        <img src="{% static 'img/analytics-icon.svg' %}" alt="Analytics" class="icon-img mx-auto mb-3">
+                        <h4>Análise de Dados</h4>
+                        <p>Visualize os dados coletados em gráficos para entender melhor seu consumo.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="services py-5">
+
+    </section>
+
+
+</main>
+{% endblock %}
