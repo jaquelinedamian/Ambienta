@@ -1,0 +1,11 @@
+# Arquivos de Segredos e Variáveis de Ambiente
+.env
+
+# Diretório de Ambiente Virtual (muito importante!)
+/venv
+/env
+
+# Arquivos de Cache e Dados Temporários
+__pycache__/
+*.pyc
+*.sqlite3 # Se você usar SQLite

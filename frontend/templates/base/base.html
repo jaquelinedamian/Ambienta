@@ -124,11 +124,11 @@
             </ul>
             <div class="text-end">
                 {% if user.is_authenticated %}
-                    <span class="nav-link text-light me-2">Bem-vindo, {{ user.username }} <br><a href="{% url 'logout' %}" class="btn btn-primary">Sair</a></span>
+                    <span class="nav-link text-light me-2">Bem-vindo, {{ user.username }} <br><a href="{% url 'accounts:logout' %}" class="btn btn-primary">Sair</a></span>
                     
                 {% else %}
-                    <a href="{% url 'login' %}" class="btn btn-light text-dark me-2">Login</a>
-                    <a href="{% url 'register' %}" class="btn btn-primary">Cadastre-se</a>
+                    <a href="{% url 'accounts:login' %}" class="btn btn-light text-dark me-2">Login</a>
+                    <a href="{% url 'accounts:register' %}" class="btn btn-primary">Cadastre-se</a>
                 {% endif %}
             </div>
         </div>
