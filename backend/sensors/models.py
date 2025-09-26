@@ -1,6 +1,11 @@
 # backend/sensors/models.py
 
 from django.db import models
+from django.db.models.signals import post_save # Necessário para enviar o comando MQTT
+from django.dispatch import receiver
+from .mqtt import publish_config # Iremos criar isso no sensors/mqtt.py
+
+# --- Modelos de Leitura de Sensores ---
 
 class Reading(models.Model):
     temperature = models.FloatField()
@@ -13,7 +18,7 @@ class FanState(models.Model):
     state = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
+    def __str__(self): # <-- CORREÇÃO DA SINTAXE AQUI
         return f"Ventilador: {'LIGADO' if self.state else 'DESLIGADO'}"
 
 class FanLog(models.Model):
@@ -23,3 +28,34 @@ class FanLog(models.Model):
 
     def __str__(self):
         return f"Ventilador Ligado: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+# --- Modelo de Configuração do Dispositivo (para controle MQTT) ---
+
+class DeviceConfig(models.Model):
+    device_id = models.CharField(max_length=50, unique=True, default='ambienta_esp32_1')
+    
+    wifi_ssid = models.CharField(max_length=100, default='NomeDaSuaRede')
+    wifi_password = models.CharField(max_length=100, default='SuaSenhaAqui')
+    
+    start_hour = models.TimeField(default='08:00:00')
+    end_hour = models.TimeField(default='18:00:00')
+    
+    # NOVO: Campo para ligar o ventilador imediatamente (controle manual)
+    force_on = models.BooleanField(default=False, verbose_name="Forçar Ventilador Ligado")
+
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Configuração do Dispositivo {self.device_id}"
+
+
+# --- SIGNAL PARA ENVIAR COMANDO MQTT ---
+
+@receiver(post_save, sender=DeviceConfig)
+def send_config_to_mqtt(sender, instance, **kwargs):
+    """
+    Dispara a função de publicação MQTT sempre que um objeto DeviceConfig é salvo.
+    """
+    if kwargs.get('created', False) or kwargs.get('update_fields'): 
+        publish_config(instance)
