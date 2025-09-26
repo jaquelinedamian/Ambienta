@@ -1,0 +1,40 @@
+{% extends "base/base.html" %}
+{% load crispy_forms_tags %} 
+
+{% block title %}Configuração do Dispositivo{% endblock %}
+
+{% block content %}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h2 class="mb-4">Configuração de Comunicação do Sensor</h2>
+            <p class="text-muted">Ajuste os dados de Wi-Fi e os horários de operação do dispositivo **{{ object.device_id }}**.</p>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        {# Renderiza o formulário no estilo Bootstrap #}
+                        {{ form|crispy }} 
+                        
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="bi bi-cloud-upload me-2"></i> Salvar e Enviar Comando MQTT
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if object %}
+            <div class="alert alert-info mt-4" role="alert">
+                <strong>Status:</strong> Configuração do dispositivo **{{ object.device_id }}** atualizada pela última vez em: {{ object.last_updated|date:"d/m/Y H:i:s" }}.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock content %}
