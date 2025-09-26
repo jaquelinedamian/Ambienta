@@ -9,7 +9,6 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -20,7 +19,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 # ALLOWED_HOSTS: Lê a variável DJANGO_ALLOWED_HOSTS do Render, com fallback seguro
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default=[], cast=lambda v: [s.strip() for s in v.split(',')])
- 
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -39,6 +38,7 @@ INSTALLED_APPS = [
     'accounts',
     'dashboard',
     'sensors',
+    'corsheaders',
 ]
 
 
@@ -48,15 +48,18 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 
 MIDDLEWARE = [
-    # 💡 AJUSTE: WhiteNoise para servir arquivos estáticos em produção (Render)
+    # 💡 AJUSTE 1: CORS deve vir *antes* de CommonMiddleware, mas *depois* de SecurityMiddleware
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', 
+    'corsheaders.middleware.CorsMiddleware',         # <-- CORRIGIDO AQUI
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    # OBS: O WhiteNoise deve ser o segundo da lista para servir estáticos o mais rápido possível
 ]
 
 ROOT_URLCONF = 'Ambienta.urls'
@@ -64,7 +67,7 @@ ROOT_URLCONF = 'Ambienta.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR.parent / 'frontend' / 'templates'], 
+        'DIRS': [BASE_DIR.parent / 'frontend' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -90,14 +93,13 @@ WSGI_APPLICATION = 'Ambienta.wsgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         # Lê a DATABASE_URL do ambiente (Render) ou usa a configuração local/padrão
-        default=os.environ.get('DATABASE_URL') or config('DATABASE_URL'), 
+        default=os.environ.get('DATABASE_URL') or config('DATABASE_URL'),
         conn_max_age=600  # Mantém conexões abertas
     )
 }
 
 # ----------------------------------------------------------------------
 # Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 # ... (permanece o mesmo)
 # ----------------------------------------------------------------------
 
@@ -131,7 +133,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Local onde o Render/collectstatic irá coletar todos os arquivos estáticos:
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') 
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # ----------------------------------------------------------------------
 
 
@@ -148,3 +150,26 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
 }
+
+# Configuração de CORS para permitir comunicação com o Frontend
+CORS_ALLOWED_ORIGINS = [
+    # 💡 AJUSTE 2: Removido o ']' extra. Permite que o próprio domínio acesse a API.
+    "https://ambienta-cnys.onrender.com",
+
+    # Opcional: para testes locais
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
+]
+
+# Se você está usando credenciais ou cookies na comunicação:
+CORS_ALLOW_CREDENTIALS = True
+
+# 💡 AJUSTE 3: Configuração de segurança CSRF
+# Permite que o próprio domínio (que está servindo o form) envie o token CSRF
+CSRF_TRUSTED_ORIGINS = ['https://ambienta-cnys.onrender.com']
+
+# 💡 AJUSTE 4: Habilitar cookies seguros
+# Necessário em ambientes HTTPS (como o Render) para que Login/Cadastro funcionem.
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = True
