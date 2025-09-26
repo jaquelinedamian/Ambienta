@@ -3,6 +3,7 @@ from django.contrib.auth.views import LoginView as DjangoLoginView
 from django.contrib.auth.decorators import login_required  # Importado para proteger views
 from django.urls import reverse_lazy
 from django.contrib import messages
+# 🛑 ATENÇÃO: Verifique se este arquivo 'forms.py' existe e está correto!
 from .forms import CustomUserCreationForm
 
 
