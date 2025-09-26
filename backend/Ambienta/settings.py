@@ -27,7 +27,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 # 💡 Nota: Usamos o nome padrão do Render e adicionamos um fallback (o 'default=[]')
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default=[], cast=lambda v: [s.strip() for s in v.split(',')])
-
+ 
 # Application definition
 
 INSTALLED_APPS = [
