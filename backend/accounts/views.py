@@ -35,10 +35,6 @@ class LoginView(DjangoLoginView):
     redirect_authenticated_user = True
 
 
-# ----------------------------------------------------------------------
-# 2. VIEWS PROTEGIDAS (APENAS ESTA PRECISA DE LOGIN)
-# ----------------------------------------------------------------------
-
 @login_required(login_url='/login/')
 def configuracao_view(request):
     return render(request, 'accounts/configuracao.html', {'user': request.user})
