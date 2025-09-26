@@ -7,8 +7,8 @@ urlpatterns = [
     # 1. Admin
     path('admin/', admin.site.urls),
 
-    # 2. Rotas Principais (Incluídas na raiz para evitar prefixos desnecessários,
-    #    já que 'accounts' lida com login/logout e 'home' com a página inicial)
+    # 2. Rotas Principais (Home, Cadastro, Login, Config)
+    # 💡 AJUSTE: Incluímos TUDO na raiz ('') para evitar prefixos redundantes.
     path('', include('home.urls')),
     path('', include('accounts.urls')),
 
