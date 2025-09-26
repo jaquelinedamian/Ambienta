@@ -48,18 +48,15 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 
 MIDDLEWARE = [
-    # 💡 AJUSTE 1: CORS deve vir *antes* de CommonMiddleware, mas *depois* de SecurityMiddleware
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',         # <-- CORRIGIDO AQUI
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',    # Ordem correta para servir estáticos
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
-    # OBS: O WhiteNoise deve ser o segundo da lista para servir estáticos o mais rápido possível
 ]
 
 ROOT_URLCONF = 'Ambienta.urls'
@@ -134,6 +131,9 @@ STATIC_URL = 'static/'
 
 # Local onde o Render/collectstatic irá coletar todos os arquivos estáticos:
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# 💡 CORREÇÃO FINAL: Instrução para WhiteNoise servir e cachear arquivos estáticos
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # ----------------------------------------------------------------------
 
 
@@ -153,8 +153,7 @@ REST_FRAMEWORK = {
 
 # Configuração de CORS para permitir comunicação com o Frontend
 CORS_ALLOWED_ORIGINS = [
-    # 💡 AJUSTE 2: Removido o ']' extra. Permite que o próprio domínio acesse a API.
-    "https://ambienta-cnys.onrender.com",
+    "https://ambienta-cnys.onrender.com", # Domínio do próprio Web Service
 
     # Opcional: para testes locais
     "http://localhost:3000",
@@ -164,12 +163,10 @@ CORS_ALLOWED_ORIGINS = [
 # Se você está usando credenciais ou cookies na comunicação:
 CORS_ALLOW_CREDENTIALS = True
 
-# 💡 AJUSTE 3: Configuração de segurança CSRF
-# Permite que o próprio domínio (que está servindo o form) envie o token CSRF
+# 💡 Configuração de segurança CSRF
 CSRF_TRUSTED_ORIGINS = ['https://ambienta-cnys.onrender.com']
 
-# 💡 AJUSTE 4: Habilitar cookies seguros
-# Necessário em ambientes HTTPS (como o Render) para que Login/Cadastro funcionem.
+# 💡 Habilitar cookies seguros para HTTPS (Render)
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = True
