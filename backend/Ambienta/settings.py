@@ -49,14 +49,19 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',    # Ordem correta para servir estáticos
-    'corsheaders.middleware.CorsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',    # Para servir estáticos
+    'corsheaders.middleware.CorsMiddleware',         # Para comunicação Frontend/Backend
+
+    # Ordem correta de autenticação e sessão:
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware', # Deve estar aqui
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    # 🛑 Se você tinha um middleware de login global, remova-o daqui!
+    # EXEMPLO DO QUE DEVE SER REMOVIDO: 'login_required.middleware.LoginRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'Ambienta.urls'
@@ -89,38 +94,23 @@ WSGI_APPLICATION = 'Ambienta.wsgi.application'
 # ----------------------------------------------------------------------
 DATABASES = {
     'default': dj_database_url.config(
-        # Lê a DATABASE_URL do ambiente (Render) ou usa a configuração local/padrão
         default=os.environ.get('DATABASE_URL') or config('DATABASE_URL'),
-        conn_max_age=600  # Mantém conexões abertas
+        conn_max_age=600
     )
 }
 
 # ----------------------------------------------------------------------
-# Password validation
-# ... (permanece o mesmo)
+# Configurações de Autenticação (Redirecionamento)
 # ----------------------------------------------------------------------
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/dashboard/'
+LOGOUT_REDIRECT_URL = '/'
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
-
-
-# Internationalization
-LANGUAGE_CODE = 'pt-br'
-TIME_ZONE = 'America/Sao_Paulo'
-USE_I18N = True
-USE_TZ = True
+# Configurações de segurança para HTTPS/Produção
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = True
+CSRF_TRUSTED_ORIGINS = ['https://ambienta-cnys.onrender.com']
 
 
 # ----------------------------------------------------------------------
@@ -128,19 +118,13 @@ USE_TZ = True
 # ----------------------------------------------------------------------
 
 STATIC_URL = 'static/'
-
-# Local onde o Render/collectstatic irá coletar todos os arquivos estáticos:
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-# 💡 CORREÇÃO FINAL: Instrução para WhiteNoise servir e cachear arquivos estáticos
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 # ----------------------------------------------------------------------
 
-
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Configuração do Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework.authentication.TokenAuthentication',
@@ -151,22 +135,11 @@ REST_FRAMEWORK = {
     ),
 }
 
-# Configuração de CORS para permitir comunicação com o Frontend
+# Configuração de CORS
 CORS_ALLOWED_ORIGINS = [
-    "https://ambienta-cnys.onrender.com", # Domínio do próprio Web Service
-
-    # Opcional: para testes locais
+    "https://ambienta-cnys.onrender.com",
     "http://localhost:3000",
     "http://127.0.0.1:8000",
 ]
 
-# Se você está usando credenciais ou cookies na comunicação:
 CORS_ALLOW_CREDENTIALS = True
-
-# 💡 Configuração de segurança CSRF
-CSRF_TRUSTED_ORIGINS = ['https://ambienta-cnys.onrender.com']
-
-# 💡 Habilitar cookies seguros para HTTPS (Render)
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = True
