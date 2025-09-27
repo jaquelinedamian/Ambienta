@@ -7,6 +7,7 @@ BASE_DIR = Path(file).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
 DEBUG = config('DEBUG', default=False, cast=bool)
+
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
 if DEBUG:
 ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
