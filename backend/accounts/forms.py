@@ -1,18 +1,13 @@
-from django import forms
+# Em accounts/forms.py
+from django.contrib.auth import get_user_model # Melhor forma de obter o modelo de usuário
 from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth.models import User
+
+User = get_user_model() # Obtém o modelo User configurado (pode ser o padrão ou o customizado)
 
 class CustomUserCreationForm(UserCreationForm):
-    # Adicione aqui outros campos personalizados se desejar
     email = forms.EmailField(required=True)
 
-    class Meta:
+    class Meta(UserCreationForm.Meta): # Herda as configurações padrão, mais seguro
         model = User
-        fields = ("username", "email", "password1", "password2")
-
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        user.email = self.cleaned_data["email"]
-        if commit:
-            user.save()
-        return user
+        fields = ("username", "email") + UserCreationForm.Meta.fields
+        # Não é necessário listar password1 e password2 se UserCreationForm.Meta.fields já os inclui.

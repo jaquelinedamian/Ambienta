@@ -71,3 +71,4 @@ virtualenv==20.27.0
 yarl==1.18.3
 zope.interface==7.2
 gunicorn
+django-crispy-forms
