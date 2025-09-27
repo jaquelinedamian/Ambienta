@@ -17,3 +17,4 @@ urlpatterns = [
     path('dashboard/', include('dashboard.urls')),
     path('sensors/', include('sensors.urls')),
 
+]
