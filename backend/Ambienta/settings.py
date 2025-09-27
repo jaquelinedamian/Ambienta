@@ -3,46 +3,43 @@ from pathlib import Path
 from decouple import config, Csv
 import dj_database_url
 
-# CORREÇÃO 1: Usar __file__ é a forma padrão e mais robusta de obter o BASE_DIR.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# --- 1. CONFIGURAÇÕES DE HOSTS E SEGURANÇA ---
+
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
-# Check 1: This block
-if DEBUG:
-    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0'] # <--- MUST be indented
-
-# Check 2: This block
-if DEBUG:
-    # Exemplo: adicione o host/porta do frontend em dev, se houver
-    # CSRF_TRUSTED_ORIGINS += ['http://localhost:3000', 'http://127.0.0.1:3000']
-    pass # <--- MUST be indented (even if it's just 'pass')
-
-# Check 3: This block
-if not DEBUG:
-    SECURE_HSTS_SECONDS = 31536000 # <--- MUST be indented
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
-    CSRF_COOKIE_SAMESITE = 'Lax'
-
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = not DEBUG
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+
+# Configurações Condicionais (DEBUG vs. Produção)
 if DEBUG:
+    # Adiciona hosts de desenvolvimento
+    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
+
     # Exemplo: adicione o host/porta do frontend em dev, se houver
     # CSRF_TRUSTED_ORIGINS += ['http://localhost:3000', 'http://127.0.0.1:3000']
-    pass
-if not DEBUG:
+
+    # Em debug, desativamos redirecionamentos e cookies seguros
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+else:
+    # Em produção, ativamos redirecionamentos, cookies seguros e HSTS
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Configuração comum para ambientes que usam proxy SSL (como Render, Heroku)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# --- 2. APPS E MIDDLEWARE ---
 
 INSTALLED_APPS = [
     # Core Django
@@ -59,13 +56,13 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
 
-    # Allauth/dj-rest-auth (ajuste conforme seu uso)
+    # Allauth/dj-rest-auth
     'django.contrib.sites',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     # 'dj_rest_auth',
-    # 'dj_rest_auth.registration', # CORREÇÃO 2: Se não for usar, pode ser removido (mantido como sugestão)
+    # 'dj_rest_auth.registration',
 
     # Apps locais
     'home',
@@ -77,9 +74,11 @@ SITE_ID = 1
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    # Adicionado o middleware do allauth (importante para o Django Allauth)
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -90,10 +89,11 @@ MIDDLEWARE = [
 ]
 ROOT_URLCONF = 'Ambienta.urls'
 
+# --- 3. TEMPLATES, WSGI/ASGI E DATABASE ---
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        # Ajuste DIRS para sua estrutura de templates, se necessário.
         'DIRS': [BASE_DIR / 'frontend' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
@@ -118,6 +118,8 @@ DATABASES = {
     )
 }
 
+# --- 4. AUTHENTICATION (ALLAUTH & REST_FRAMEWORK) ---
+
 AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
@@ -128,7 +130,6 @@ ACCOUNT_EMAIL_REQUIRED = config('ACCOUNT_EMAIL_REQUIRED', default=True, cast=boo
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        # Se usar JWT, troque por 'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
@@ -143,6 +144,8 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
+
+# --- 5. INTERNACIONALIZAÇÃO E ARQUIVOS (STATIC/MEDIA) ---
 
 LANGUAGE_CODE = 'pt-br'
 TIME_ZONE = 'America/Sao_Paulo'
@@ -164,6 +167,8 @@ STORAGES = {
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# --- 6. CHANNELS E LOGGING ---
 
 CHANNEL_LAYERS = {
     'default': {
