@@ -10,8 +10,23 @@ SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
+# Check 1: This block
 if DEBUG:
-    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
+    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0'] # <--- MUST be indented
+
+# Check 2: This block
+if DEBUG:
+    # Exemplo: adicione o host/porta do frontend em dev, se houver
+    # CSRF_TRUSTED_ORIGINS += ['http://localhost:3000', 'http://127.0.0.1:3000']
+    pass # <--- MUST be indented (even if it's just 'pass')
+
+# Check 3: This block
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000 # <--- MUST be indented
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_SSL_REDIRECT = not DEBUG
