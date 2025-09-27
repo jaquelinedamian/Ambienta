@@ -16,7 +16,6 @@ cryptography==44.0.1
 daphne==4.1.2
 distlib==0.3.9
 dj-database-url==3.0.1
-# Usar apenas a versão moderna
 dj-rest-auth==7.0.1
 Django==5.1.2
 django-allauth==65.4.1
@@ -41,8 +40,7 @@ pillow==11.0.0
 pipenv==2024.2.0
 platformdirs==4.3.6
 propcache==0.2.1
-# Escolha uma única versão do driver PostgreSQL para evitar conflitos
-psycopg-binary==3.2.10
+psycopg[binary]>=3.1
 pyasn1==0.6.1
 pyasn1_modules==0.4.1
 pycparser==2.22
@@ -70,7 +68,7 @@ urllib3==2.2.3
 virtualenv==20.27.0
 yarl==1.18.3
 zope.interface==7.2
-gunicorn
-django-crispy-forms
-whitenoise
-crispy-bootstrap5
+gunicorn==23.0.0
+django-crispy-forms==2.4
+whitenoise==6.11.0
+crispy-bootstrap5==2024.2
