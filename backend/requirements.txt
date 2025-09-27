@@ -16,18 +16,17 @@ cryptography==44.0.1
 daphne==4.1.2
 distlib==0.3.9
 dj-database-url==3.0.1
+# Usar apenas a versão moderna
 dj-rest-auth==7.0.1
 Django==5.1.2
 django-allauth==65.4.1
 django-cors-headers==4.7.0
 django-environ==0.12.0
 django-filter==24.3
-django-rest-auth==0.9.5
 djangorestframework==3.15.2
 djangorestframework_simplejwt==5.5.0
 filelock==3.16.1
 frozenlist==1.5.0
-homebrew==0.0.0.1
 hyperlink==21.0.0
 idna==3.10
 incremental==24.7.2
@@ -42,10 +41,8 @@ pillow==11.0.0
 pipenv==2024.2.0
 platformdirs==4.3.6
 propcache==0.2.1
-psycopg==3.2.10
+# Escolha uma única versão do driver PostgreSQL para evitar conflitos
 psycopg-binary==3.2.10
-psycopg2==2.9.10
-psycopg2-binary==2.9.10
 pyasn1==0.6.1
 pyasn1_modules==0.4.1
 pycparser==2.22
