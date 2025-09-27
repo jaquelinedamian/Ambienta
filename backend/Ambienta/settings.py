@@ -1,13 +1,17 @@
 """
 Django settings for Ambienta project.
+
+Configuração principal ajustada para uso com variáveis de ambiente (decouple)
+e deploy em serviços como o Render (dj_database_url, whitenoise).
 """
 import os
 import dj_database_url
-from decouple import config
+from decouple import config, Csv
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 
 # Quick-start development settings - unsuitable for production
 
@@ -15,30 +19,40 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# 💡 AJUSTE: Otimizado para ler 'DEBUG' com cast=bool
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-# ALLOWED_HOSTS: Lê a variável DJANGO_ALLOWED_HOSTS do Render, com fallback seguro
-ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default=[], cast=lambda v: [s.strip() for s in v.split(',')])
+# 💡 AJUSTE: Usando 'Csv()' do decouple para parse mais limpo e seguro de listas,
+#           especialmente para 'ALLOWED_HOSTS' e 'CSRF_TRUSTED_ORIGINS'
+# ALLOWED_HOSTS: Lê a variável DJANGO_ALLOWED_HOSTS (ex: do Render), com fallback.
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
+if DEBUG:
+    # Adiciona 'localhost' e '127.0.0.1' automaticamente em desenvolvimento
+    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
 
 # Application definition
 
 INSTALLED_APPS = [
-    # ... (Seus apps existentes)
+    # 💡 AJUSTE: Core Apps do Django primeiro por convenção
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Third-party apps
     'rest_framework',
     'rest_framework.authtoken',
     'crispy_forms',
     'crispy_bootstrap5',
+
+
+    # Local apps
     'home',
     'accounts',
     'dashboard',
     'sensors',
-    'corsheaders',
 ]
 
 
@@ -49,8 +63,8 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',    # Ordem correta para servir estáticos
-    'corsheaders.middleware.CorsMiddleware',
+    # 💡 WhiteNoise deve vir logo após SecurityMiddleware em produção
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -61,9 +75,13 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'Ambienta.urls'
 
+# ----------------------------------------------------------------------
+# Templates
+# ----------------------------------------------------------------------
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        # DIRS para templates de projeto (no seu caso, 'frontend/templates')
         'DIRS': [BASE_DIR.parent / 'frontend' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
@@ -77,29 +95,25 @@ TEMPLATES = [
     },
 ]
 
-STATICFILES_DIRS = [
-    BASE_DIR.parent / 'frontend' / 'static',
-]
-
 WSGI_APPLICATION = 'Ambienta.wsgi.application'
 
 
 # ----------------------------------------------------------------------
-# Database (Ajuste Crucial para o Render)
+# Database (Ajuste Crucial para o Render/Produção)
 # ----------------------------------------------------------------------
+# 💡 AJUSTE: Simplificando a leitura. dj_database_url.config() já prioriza
+#           a variável de ambiente DATABASE_URL.
 DATABASES = {
     'default': dj_database_url.config(
-        # Lê a DATABASE_URL do ambiente (Render) ou usa a configuração local/padrão
-        default=os.environ.get('DATABASE_URL') or config('DATABASE_URL'),
-        conn_max_age=600  # Mantém conexões abertas
+        default=config('DATABASE_URL', default='sqlite:///db.sqlite3'), # Fallback seguro ou dev local
+        conn_max_age=600, # Mantém conexões abertas
+        ssl_require=not DEBUG, # Habilita SSL em produção (Render, etc.)
     )
 }
 
 # ----------------------------------------------------------------------
 # Password validation
-# ... (permanece o mesmo)
 # ----------------------------------------------------------------------
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -124,21 +138,39 @@ USE_TZ = True
 
 
 # ----------------------------------------------------------------------
-# Static files (Ajuste para Produção no Render)
+# Static files (Configuração para Produção com WhiteNoise)
 # ----------------------------------------------------------------------
-
 STATIC_URL = 'static/'
 
-# Local onde o Render/collectstatic irá coletar todos os arquivos estáticos:
+# Local onde o 'collectstatic' irá coletar todos os arquivos estáticos:
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# 💡 CORREÇÃO FINAL: Instrução para WhiteNoise servir e cachear arquivos estáticos
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Diretórios adicionais para arquivos estáticos (no seu caso, 'frontend/static'):
+STATICFILES_DIRS = [
+    BASE_DIR.parent / 'frontend' / 'static',
+]
+
+# 💡 AJUSTE: Habilita compressão e cache para arquivos estáticos em produção (WhiteNoise)
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 # ----------------------------------------------------------------------
+
+# 💡 AJUSTE: Configuração opcional de HTTPS/CSRF para produção no Render
+# Garante que os cookies de sessão e CSRF só sejam enviados via HTTPS
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+# Confiança em origens para CSRF (útil se estiver rodando em subdomínio ou Render)
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 
 # Configuração do Django REST Framework
 REST_FRAMEWORK = {
@@ -147,26 +179,8 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        # 💡 AJUSTE: Permite acesso irrestrito se DEBUG=True (ajuda no desenvolvimento local)
+        #            Mantém IsAuthenticated em produção
+        'rest_framework.permissions.AllowAny' if DEBUG else 'rest_framework.permissions.IsAuthenticated',
     ),
 }
-
-# Configuração de CORS para permitir comunicação com o Frontend
-CORS_ALLOWED_ORIGINS = [
-    "https://ambienta-cnys.onrender.com", # Domínio do próprio Web Service
-
-    # Opcional: para testes locais
-    "http://localhost:3000",
-    "http://127.0.0.1:8000",
-]
-
-# Se você está usando credenciais ou cookies na comunicação:
-CORS_ALLOW_CREDENTIALS = True
-
-# 💡 Configuração de segurança CSRF
-CSRF_TRUSTED_ORIGINS = ['https://ambienta-cnys.onrender.com']
-
-# 💡 Habilitar cookies seguros para HTTPS (Render)
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = True
