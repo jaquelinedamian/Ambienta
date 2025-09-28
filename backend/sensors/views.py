@@ -9,22 +9,24 @@ from rest_framework.permissions import IsAuthenticated
 from django.views.generic.edit import UpdateView
 from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.utils import timezone 
+from django.utils import timezone
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
+from datetime import time # <-- IMPORT NECESSÁRIO
 from .serializers import ReadingSerializer, FanStateSerializer
-from .models import Reading, FanState, FanLog, DeviceConfig 
+from .models import Reading, FanState, FanLog, DeviceConfig
 
 
 # ===============================================
 # 1. API VIEWS (Para Comunicação ESP32)
+# Essas views exigem autenticação (IsAuthenticated)
 # ===============================================
 
 class ReadingCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request, *args, **kwargs):
         serializer = ReadingSerializer(data=request.data)
         if serializer.is_valid():
@@ -38,10 +40,11 @@ class ReadingCreateAPIView(APIView):
 
     def check_and_update_fan_state(self, current_temperature):
         fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
-        
+
         # OBTÉM A CONFIGURAÇÃO ATUAL (onde o force_on está)
-        config, config_created = DeviceConfig.objects.get_or_create(id=1) 
-        
+        config, config_created = DeviceConfig.objects.get_or_create(id=1)
+
+        # Ajuste: Use uma variável de limite, idealmente configurável no DeviceConfig
         temperature_limit = 25.0
 
         # 1. PRIORITY CHECK: Se o modo manual estiver ATIVO, o Django NÃO PODE desligar.
@@ -57,13 +60,13 @@ class ReadingCreateAPIView(APIView):
 
         # 2. LÓGICA AUTOMÁTICA NORMAL (Executa apenas se force_on for False)
         # ------------------------------------------------------------------
-        
+
         if current_temperature > temperature_limit and not fan_state.state:
             fan_state.state = True
             fan_state.save()
             FanLog.objects.create(start_time=timezone.now())
             print("LIGANDO VENTILADOR - TEMPERATURA ACIMA DO LIMITE")
-            
+
         elif current_temperature <= temperature_limit and fan_state.state:
             # Se o ventilador estava ligado (fan_state.state é True) e a temperatura baixou
             fan_state.state = False
@@ -83,9 +86,10 @@ class ReadingListAPIView(generics.ListAPIView):
     filter_backends = [OrderingFilter]
     ordering_fields = ['id', 'timestamp']
 
+
 class FanStateAPIView(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request, *args, **kwargs):
         fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
         serializer = FanStateSerializer(fan_state)
@@ -109,29 +113,44 @@ class FanControlAPIView(APIView):
     API de Força Bruta para testar a ativação imediata do ventilador.
     O ESP8266 acessa esta API para obter o status 'force_on'.
     """
-    permission_classes = [IsAuthenticated] 
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        config, created = DeviceConfig.objects.get_or_create(id=1) 
-        
+        config, created = DeviceConfig.objects.get_or_create(id=1)
+
         # Retorna o status de force_on
         return JsonResponse({
             'device_id': config.device_id,
-            'force_on': config.force_on # O campo booleano
+            'force_on': config.force_on  # O campo booleano
         })
 
 
 # ===============================================
 # 3. WEB VIEW (Para a Página de Configuração HTML)
+# Esta view exige autenticação (LoginRequiredMixin)
 # ===============================================
 
 class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
+    # Garante que apenas usuários logados acessem esta view
 
     model = DeviceConfig
-    # CAMPOS AJUSTADOS: Inclui o campo 'force_on'
-    fields = ['wifi_ssid', 'wifi_password', 'start_hour', 'end_hour', 'force_on'] 
+    fields = ['wifi_ssid', 'wifi_password', 'start_hour', 'end_hour', 'force_on']
     template_name = 'sensors/device_config_form.html'
-    success_url = reverse_lazy('sensors:config') 
+
+    # Lembrete: Se 'dashboard' não funcionar, mude para 'dashboard_view'
+    success_url = reverse_lazy('dashboard')
 
     def get_object(self, queryset=None):
-        return DeviceConfig.objects.get(pk=1)
+        # CORREÇÃO AQUI: Usa get_or_create e fornece valores de tempo como objetos time
+        # Isso resolve o erro 'str' object has no attribute 'strftime'
+        config, created = DeviceConfig.objects.get_or_create(
+            pk=1,
+            defaults={
+                'device_id': 'default-device',
+                'wifi_ssid': 'Ambienta-WiFi',
+                'wifi_password': 'padrao',
+                'start_hour': time(8, 0),    # Define 08:00 como objeto time
+                'end_hour': time(18, 0),      # Define 18:00 como objeto time
+            }
+        )
+        return config

@@ -1,5 +1,6 @@
+# dashboard/views.py
+
 from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
 from sensors.models import Reading, FanState, FanLog
 from django.core.serializers.json import DjangoJSONEncoder
 import json
@@ -8,9 +9,8 @@ from django.db.models import Sum
 from django.core.paginator import Paginator
 
 
-@login_required(login_url='login')
+
 def dashboard_view(request):
-    
     readings_list = Reading.objects.all().order_by('-timestamp')
     paginator_readings = Paginator(readings_list, 10)
     page_number_readings = request.GET.get('page')

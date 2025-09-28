@@ -3,6 +3,7 @@ from pathlib import Path
 from decouple import config, Csv
 import dj_database_url
 
+LOGIN_URL = 'account_login'
 # --- CORREÇÃO DO CAMINHO BASE (BASE_DIR) ---
 # Sobe três níveis para apontar para a raiz do projeto (e não a pasta 'backend/Ambienta')
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -154,12 +155,10 @@ STATIC_URL = 'static/'
 # STATIC_ROOT aponta para /src/staticfiles/
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# STATICFILES_DIRS aponta para /src/frontend/static/
-front_static_path = BASE_DIR / 'frontend' / 'static'
-if front_static_path.exists():
-    STATICFILES_DIRS = [front_static_path]
-else:
-    STATICFILES_DIRS = []
+# CORREÇÃO MANTIDA: Define o caminho diretamente
+STATICFILES_DIRS = [
+    BASE_DIR / 'frontend' / 'static',
+]
 
 # --- CONFIGURAÇÃO CORRIGIDA DE STORAGES PARA WhiteNoise E DJANGO 5.x ---
 STORAGES = {
