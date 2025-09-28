@@ -187,7 +187,7 @@ STORAGES = {
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# --- 6. CHANNELS E LOGGING ---
+
 
 CHANNEL_LAYERS = {
     'default': {
