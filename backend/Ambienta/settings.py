@@ -13,6 +13,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 # --- 1. CONFIGURAÇÕES DE HOSTS E SEGURANÇA ---
 
+# LENDO APENAS UMA VARIÁVEL: Django_Allowed_Hosts
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
