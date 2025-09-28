@@ -27,6 +27,16 @@ if DEBUG:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
 else:
+    # --- AJUSTE PARA O RENDER (INJEÇÃO FORÇADA DO DOMÍNIO) ---
+    RENDER_EXTERNAL_HOSTNAME = 'ambienta-83aj.onrender.com'
+
+    # 1. Adiciona o domínio do Render a ALLOWED_HOSTS (Se não estiver lá)
+    if RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+    # 2. Adiciona o domínio seguro ao CSRF_TRUSTED_ORIGINS
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
+
     # Em produção, ativamos redirecionamentos, cookies seguros e HSTS
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
