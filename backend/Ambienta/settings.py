@@ -22,6 +22,9 @@ if DEBUG:
     # Adiciona hosts de desenvolvimento
     ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
 
+    # CORREÇÃO AQUI: Adicionar explicitamente o domínio do Render para testes (DEBUG)
+    ALLOWED_HOSTS.append('ambienta-83aj.onrender.com')
+
     # Em debug, desativamos redirecionamentos e cookies seguros
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
