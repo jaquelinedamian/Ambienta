@@ -17,3 +17,4 @@ python-decouple==3.8
 redis==5.0.8
 sqlparse==0.5.3
 whitenoise==6.11.0
+gunicorn
