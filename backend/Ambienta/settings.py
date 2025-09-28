@@ -176,13 +176,12 @@ STATICFILES_DIRS = [
 
 # --- CONFIGURAÇÃO CORRIGIDA DE STORAGES PARA WhiteNoise E DJANGO 5.x ---
 STORAGES = {
-    # Backend padrão para MEDIA e outros arquivos, crucial para development.
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
-    # Backend estático para produção (WhiteNoise com cache e manifesto)
+    # MUDANÇA TEMPORÁRIA: Use StaticFilesStorage em vez de CompressedManifestStaticFilesStorage
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
 
