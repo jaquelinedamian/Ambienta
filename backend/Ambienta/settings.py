@@ -174,7 +174,6 @@ STATICFILES_DIRS = [
     BASE_DIR / 'frontend' / 'static',
 ]
 
-# --- CONFIGURAÇÃO CORRIGIDA DE STORAGES PARA WhiteNoise E DJANGO 5.x ---
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
