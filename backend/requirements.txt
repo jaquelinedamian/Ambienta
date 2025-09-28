@@ -8,7 +8,7 @@ Django==5.2.6
 django-allauth==65.11.2
 django-crispy-forms==2.4
 djangorestframework==3.16.1
-GDAL==3.10.2
+pygdal==3.6.2.*
 msgpack==1.1.1
 paho-mqtt==2.1.0
 psycopg2-binary==2.9.10
