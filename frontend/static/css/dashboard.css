@@ -1,0 +1,43 @@
+.dashboard-status-info {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 0;
+}
+
+.dashboard-card {
+    height: 100%;
+}
+
+.card-text {
+    margin-bottom: 0.5rem;
+}
+
+.badge-custom {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Garante que os ícones fiquem alinhados verticalmente */
+.card-text i {
+    vertical-align: middle;
+    margin-right: 0.25rem;
+}
+
+/* Ajusta o espaçamento entre os elementos do card */
+.dashboard-card .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Garante que todas as informações de tempo fiquem em uma linha */
+.time-info {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.875rem;
+    margin-top: auto;
+}

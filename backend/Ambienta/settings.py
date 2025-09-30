@@ -3,32 +3,55 @@ from pathlib import Path
 from decouple import config, Csv
 import dj_database_url
 
-LOGIN_URL = 'account_login'
+LOGIN_URL = 'accounts:login'
 # --- CORREÇÃO DO CAMINHO BASE (BASE_DIR) ---
 # Sobe três níveis para apontar para a raiz do projeto (e não a pasta 'backend/Ambienta')
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# --- CONFIGURAÇÕES DE DESENVOLVIMENTO ---
 SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = True  # Forçado para True em desenvolvimento
+
+# Configuração para dados simulados
+USE_MOCK_DATA = config('USE_MOCK_DATA', default=True, cast=bool)
+# DEBUG = config('DEBUG', default=False, cast=bool)  # Comentado temporariamente
 
 # --- 1. CONFIGURAÇÕES DE HOSTS E SEGURANÇA ---
 
 # LENDO APENAS UMA VARIÁVEL: Django_Allowed_Hosts
-ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='*', cast=Csv())
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 # Configurações Condicionais (DEBUG vs. Produção)
 if DEBUG:
     # Adiciona hosts de desenvolvimento
-    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
+    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0', '127.0.0.1:8000', '127.0.0.1:8080']
 
     # CORREÇÃO AQUI: Adicionar explicitamente o domínio do Render para testes (DEBUG)
     ALLOWED_HOSTS.append('ambienta-83aj.onrender.com')
 
-    # Em debug, desativamos redirecionamentos e cookies seguros
+    # Em debug, desativamos COMPLETAMENTE redirecionamentos e cookies seguros
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+    
+    # Desabilitar proxy SSL para desenvolvimento local
+    SECURE_PROXY_SSL_HEADER = None
+    
+    # Forçar HTTP em desenvolvimento
+    SECURE_SCHEMA = 'http'
+    
+    # Desabilitar redirecionamento para HTTPS permanentemente
+    SECURE_REDIRECT_EXEMPT = [r'^.*$']  # Todas as URLs são isentas de redirecionamento HTTPS
+    
+    # NOVA: Desabilitar HSTS completamente em desenvolvimento
+    SECURE_HSTS_SECONDS = None
+    
+    # NOVA: Garantir que não há upgrade para HTTPS
+    USE_TLS = False
 else:
     # --- AJUSTE PARA O RENDER (INJEÇÃO FORÇADA DO DOMÍNIO) ---
     RENDER_EXTERNAL_HOSTNAME = 'ambienta-83aj.onrender.com'
@@ -49,9 +72,9 @@ else:
     SECURE_HSTS_PRELOAD = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SAMESITE = 'Lax'
-
-# Configuração comum para ambientes que usam proxy SSL (como Render)
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Configuração para ambientes que usam proxy SSL (como Render) - APENAS EM PRODUÇÃO
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # --- 2. APPS E MIDDLEWARE ---
 
@@ -81,6 +104,7 @@ INSTALLED_APPS = [
     'accounts',
     'dashboard',
     'sensors',
+    'ml_models',
 ]
 SITE_ID = 1
 
@@ -88,9 +112,9 @@ CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    # WhiteNoise precisa vir logo após SecurityMiddleware
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    # 'django.middleware.security.SecurityMiddleware',  # Removido temporariamente para teste
+    # 'whitenoise.middleware.WhiteNoiseMiddleware',  # Removido temporariamente
+    'Ambienta.middleware.ForceHTTPMiddleware',  # Middleware customizado para forçar HTTP
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -124,11 +148,10 @@ WSGI_APPLICATION = 'Ambienta.wsgi.application'
 ASGI_APPLICATION = 'Ambienta.asgi.application'
 
 DATABASES = {
-    'default': dj_database_url.config(
-        default=config('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}'),
-        conn_max_age=600,
-        ssl_require=not DEBUG,
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
 
 # --- 4. AUTHENTICATION (ALLAUTH & REST_FRAMEWORK) ---
@@ -137,9 +160,16 @@ AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
 )
+
+# Configurações atualizadas do allauth (corrigindo deprecações)
 ACCOUNT_EMAIL_VERIFICATION = config('ACCOUNT_EMAIL_VERIFICATION', default='optional')
-ACCOUNT_AUTHENTICATION_METHOD = config('ACCOUNT_AUTHENTICATION_METHOD', default='username_email')
-ACCOUNT_EMAIL_REQUIRED = config('ACCOUNT_EMAIL_REQUIRED', default=True, cast=bool)
+ACCOUNT_LOGIN_METHODS = {'username', 'email'}  # Substitui ACCOUNT_AUTHENTICATION_METHOD
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']  # Substitui ACCOUNT_EMAIL_REQUIRED
+
+# URLs de redirecionamento
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

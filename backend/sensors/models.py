@@ -13,6 +13,17 @@ class Reading(models.Model):
 
     def __str__(self):
         return f"Leitura de {self.timestamp}"
+        
+    def save(self, *args, **kwargs):
+        # Arredonda a temperatura para uma casa decimal antes de salvar
+        if self.temperature is not None:
+            self.temperature = round(float(self.temperature), 1)
+        super().save(*args, **kwargs)
+        
+    @property
+    def formatted_temperature(self):
+        """Retorna a temperatura formatada com uma casa decimal"""
+        return "{:.1f}".format(self.temperature)
 
 class FanState(models.Model):
     state = models.BooleanField(default=False)
