@@ -26,8 +26,8 @@ def register_view(request):
 
             messages.success(request, f"Conta criada com sucesso para {user.username}!")
 
-            # CORREÇÃO DE URL: Usando 'dashboard_view'
-            return redirect('dashboard_view')
+            # Redireciona para o dashboard principal
+            return redirect('dashboard:dashboard')
         else:
             # Se o formulário for inválido, exibe a primeira mensagem de erro
             for field, errors in form.errors.items():
@@ -52,7 +52,7 @@ def login_view(request):
     """
     if request.user.is_authenticated:
         # Se o usuário já estiver logado, redireciona para evitar re-login
-        return redirect('dashboard_view')  # CORREÇÃO DE URL AQUI
+        return redirect('dashboard:dashboard')
 
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
@@ -76,8 +76,7 @@ def login_view(request):
                 return redirect(next_url)
 
             # Se não houver 'next' ou se ele não for seguro, redireciona para o dashboard
-            # CORREÇÃO DE URL AQUI: Usando 'dashboard_view'
-            return redirect(reverse('dashboard_view'))
+            return redirect('dashboard:dashboard')
 
         else:
             messages.error(request, "Nome de usuário ou senha inválidos.")

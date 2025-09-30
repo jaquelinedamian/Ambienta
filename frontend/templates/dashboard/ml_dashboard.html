@@ -1,6 +1,6 @@
-﻿{% extends 'base/base.html' %}
+{% extends 'base/base.html' %}
 
-{% block title %}Dashboard ML - Ambienta{% endblock %}
+{% block title %}Dashboard ML - Ambienta{% endblock title %}
 
 {% block extra_css %}
 <style>
@@ -19,7 +19,7 @@
     .model-inactive {
         color: #dc3545;
     }
-    .anomaly-detected {
+    .detected {
         background-color: #fff3cd;
         border-left: 4px solid #ffc107;
     }
@@ -37,21 +37,33 @@
         border-radius: 10px;
     }
 </style>
-{% endblock %}
+{% endblock extra_css %}
 
 {% block content %}
+{% csrf_token %}
 <main class="container-fluid">
+    <div id="alertContainer"></div>
+    {% if not user.is_authenticated %}
+    <div class="alert alert-warning mb-4">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Você precisa estar <a href="{% url 'accounts:login' %}" class="alert-link">logado</a> para treinar modelos ou atualizar estatísticas.
+    </div>
+    {% endif %}
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">
             <i class="fas fa-brain me-2"></i>
             Dashboard Machine Learning
         </h1>
         <div class="btn-toolbar mb-2 mb-md-0">
-            <button type="button" class="btn btn-primary me-2" onclick="triggerTraining()">
+            <button type="button" class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#mlInfoModal">
+                <i class="fas fa-info-circle me-1"></i>
+                Sobre o ML
+            </button>
+            <button type="button" class="btn btn-primary me-2" id="trainModelBtn" {% if not user.is_authenticated %}disabled{% endif %}>
                 <i class="fas fa-cog me-1"></i>
                 Treinar Modelos
             </button>
-            <button type="button" class="btn btn-outline-secondary" onclick="refreshStats()">
+            <button type="button" class="btn btn-outline-secondary" id="refreshStatsBtn" {% if not user.is_authenticated %}disabled{% endif %}>
                 <i class="fas fa-sync-alt me-1"></i>
                 Atualizar
             </button>
@@ -73,7 +85,7 @@
             <div class="card metric-card h-100">
                 <div class="card-body text-center">
                     <i class="fas fa-chart-line fa-2x text-success mb-2"></i>
-                    <h3 class="card-title">{{ recent_predictions.count }}</h3>
+                    <h3 class="card-title">{{ predictions_24h }}</h3>
                     <p class="card-text text-muted">Predições (24h)</p>
                 </div>
             </div>
@@ -93,6 +105,105 @@
                     <i class="fas fa-database fa-2x text-info mb-2"></i>
                     <h3 class="card-title">{{ total_predictions }}</h3>
                     <p class="card-text text-muted">Total Predições</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status da Otimização do Ventilador -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-fan me-2"></i>
+                        Status da Otimização do Ventilador
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">Estado Atual</h6>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span id="fanStatus" class="badge {% if fan_state %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if fan_state %}Ligado{% else %}Desligado{% endif %}
+                                        </span>
+                                        <span id="fanConfidence" class="text-muted">
+                                            {% comment %}<!-- DEBUG: fan_confidence = {{ fan_confidence }} -->{% endcomment %}
+                                            Confiança: {% firstof fan_confidence "N/A" %}%
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">Economia de Energia</h6>
+                                    <div class="text-center">
+                                        {% comment %}<!-- DEBUG: energy_savings = {{ energy_savings }} -->{% endcomment %}
+                                        <h3 class="text-success mb-0">{{ energy_savings|floatformat:1 }}%</h3>
+                                        <small class="text-muted">vs. controle manual</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">Efetividade</h6>
+                                    <div class="text-center">
+                                        {% comment %}<!-- DEBUG: fan_effectiveness = {{ fan_effectiveness }} -->{% endcomment %}
+                                        <h3 class="text-primary mb-0">{{ fan_effectiveness|floatformat:1 }}%</h3>
+                                        <small class="text-muted">redução média de temperatura</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h6>Últimas Otimizações</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Horário</th>
+                                            <th>Temperatura</th>
+                                            <th>Ação</th>
+                                            <th>Duração</th>
+                                            <th>Resultado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fanOptimizationHistory">
+                                        {% for log in fan_optimization_history %}
+                                        <tr>
+                                            <td>{{ log.timestamp|date:"H:i" }}</td>
+                                            <td>{{ log.temperature }}°C</td>
+                                            <td>
+                                                {% if log.action %}
+                                                <span class="badge bg-success">Ligado</span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">Mantido Desligado</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ log.duration }} min</td>
+                                            <td>{{ log.temperature_reduction|floatformat:1 }}°C</td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="5" class="text-center text-muted">
+                                                Nenhum registro de otimização ainda
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -161,15 +272,14 @@
                                 </div>
                                 <div class="text-end">
                                     {% if prediction.model.model_type == 'temperature_prediction' %}
-                                        {% with pred=prediction.prediction %}
                                         <span class="badge bg-info">
-                                            {{ pred.predicted_temp|floatformat:1 }}°C
+                                            {{ prediction.prediction.predicted_temp|floatformat:1 }}°C
                                         </span>
                                         <br>
                                         <small class="text-muted">
-                                            IC: [{{ pred.confidence_interval.0|floatformat:1 }}, {{ pred.confidence_interval.1|floatformat:1 }}]°C
+                                            IC: [{{ prediction.prediction.confidence_interval.0|floatformat:1 }}°C,
+                                                {{ prediction.prediction.confidence_interval.1|floatformat:1 }}°C]
                                         </small>
-                                        {% endwith %}
                                     {% elif prediction.model.model_type == 'anomaly_detection' %}
                                         <span class="badge {% if prediction.prediction.is_anomaly %}bg-danger{% else %}bg-success{% endif %}">
                                             {{ prediction.prediction.is_anomaly|yesno:"Anomalia,Normal" }}
@@ -199,6 +309,22 @@
     <!-- Anomalias Detectadas -->
     <div class="row mb-4">
         <div class="col-12">
+            <div class="alert alert-info mb-3">
+                <h5><i class="fas fa-info-circle me-2"></i>Sobre Anomalias</h5>
+                <p class="mb-2">O sistema de detecção de anomalias monitora padrões incomuns na temperatura que podem indicar:</p>
+                <ul class="mb-2">
+                    <li>Falhas em equipamentos de climatização</li>
+                    <li>Comportamento térmico irregular do ambiente</li>
+                    <li>Possíveis problemas de ventilação</li>
+                    <li>Mudanças bruscas de temperatura</li>
+                </ul>
+                <p class="mb-0">
+                    <strong>Como interpretar:</strong> 
+                    Um score de anomalia próximo a 1.0 indica um padrão muito diferente do normal,
+                    enquanto valores próximos a 0.0 indicam comportamento esperado.
+                    O nível de confiança indica a certeza do modelo sobre a classificação.
+                </p>
+            </div>
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -249,7 +375,7 @@
         </div>
     </div>
 
-    <!-- HistÃ³rico de Treinamento -->
+    <!-- Histórico de Treinamento -->
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -313,67 +439,254 @@
         </div>
     </div>
 </div>
-{% endblock %}
+
+<!-- Modal de Informações ML -->
+<div class="modal fade" id="mlInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-robot me-2"></i>
+                    Recursos de Machine Learning
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- Predição de Temperatura -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-temperature-high text-primary me-2"></i>
+                                    Predição de Temperatura
+                                </h5>
+                                <p class="card-text">
+                                    Prevê as temperaturas futuras com base em:
+                                </p>
+                                <ul class="small">
+                                    <li>Padrões históricos</li>
+                                    <li>Hora do dia</li>
+                                    <li>Dia da semana</li>
+                                    <li>Estação do ano</li>
+                                    <li>Estado do ventilador</li>
+                                </ul>
+                                <p class="small text-muted">
+                                    <strong>Uso:</strong> Planejamento e ajuste proativo da climatização
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Detecção de Anomalias -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                                    Detecção de Anomalias
+                                </h5>
+                                <p class="card-text">
+                                    Identifica padrões anormais considerando:
+                                </p>
+                                <ul class="small">
+                                    <li>Desvios da média</li>
+                                    <li>Variações bruscas</li>
+                                    <li>Padrões temporais</li>
+                                    <li>Comportamento histórico</li>
+                                </ul>
+                                <p class="small text-muted">
+                                    <strong>Uso:</strong> Identificação precoce de problemas e manutenção preventiva
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Otimização de Ventilador -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-fan text-success me-2"></i>
+                                    Otimização de Ventilador
+                                </h5>
+                                <p class="card-text">
+                                    Otimiza o funcionamento com base em:
+                                </p>
+                                <ul class="small">
+                                    <li>Temperatura atual</li>
+                                    <li>Previsão de temperatura</li>
+                                    <li>Eficiência energética</li>
+                                    <li>Padrões de uso</li>
+                                </ul>
+                                <p class="small text-muted">
+                                    <strong>Uso:</strong> Redução de custos e melhoria do conforto térmico
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info mt-3 mb-0">
+                    <h6><i class="fas fa-lightbulb me-2"></i>Benefícios do Sistema</h6>
+                    <ul class="mb-0">
+                        <li>Economia de energia através da otimização inteligente</li>
+                        <li>Detecção precoce de problemas no sistema de climatização</li>
+                        <li>Melhor planejamento da manutenção preventiva</li>
+                        <li>Maior conforto térmico com controle proativo</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
 
 {% block extra_js %}
 <script>
-function triggerTraining() {
-    // Mostrar modal de loading
-    const modal = new bootstrap.Modal(document.getElementById('loadingModal'));
-    modal.show();
+// Função para mostrar mensagens de alerta
+function showMessage(message, isError = false) {
+    console.log('showMessage chamada:', { message, isError });
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${isError ? 'danger' : 'success'} alert-dismissible fade show`;
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    const alertContainer = document.getElementById('alertContainer');
+    console.log('Alert container encontrado:', !!alertContainer);
+    if (alertContainer) {
+        alertContainer.appendChild(alertDiv);
+    } else {
+        document.querySelector('main').insertBefore(alertDiv, document.querySelector('main').firstChild);
+    }
     
-    fetch('/dashboard/api/ml/train/', {
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Função para disparar o treinamento dos modelos
+function triggerTraining() {
+    console.log('triggerTraining iniciada');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    console.log('Modal carregado:', !!loadingModal);
+    loadingModal.show();
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    console.log('CSRF token encontrado:', !!csrfToken, csrfToken?.value);
+    
+    fetch('{% url "ml_models:train_models" %}', {
         method: 'POST',
         headers: {
-            'X-CSRFToken': getCookie('csrftoken'),
+            'X-CSRFToken': csrfToken?.value,
             'Content-Type': 'application/json',
         },
+        credentials: 'same-origin'
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
-        modal.hide();
+        loadingModal.hide();
         if (data.success) {
-            alert('Treinamento concluído com sucesso!');
-            location.reload();
+            showMessage('Treinamento concluído com sucesso!');
+            setTimeout(() => location.reload(), 1500);
         } else {
-            alert('Erro no treinamento: ' + data.error);
+            showMessage(data.error || 'Erro desconhecido no treinamento', true);
         }
     })
     .catch(error => {
-        modal.hide();
-        alert('Erro na requisição: ' + error);
+        loadingModal.hide();
+        showMessage(`Erro na requisição: ${error.message}`, true);
+        console.error('Erro:', error);
     });
 }
 
+// Função para atualizar estatísticas
 function refreshStats() {
-    fetch('/dashboard/api/ml/stats/')
-    .then(response => response.json())
+    console.log('Função refreshStats chamada');
+    const btn = document.querySelector('#refreshStatsBtn');
+    console.log('Botão encontrado:', btn);
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Atualizando...';
+    btn.disabled = true;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    console.log('CSRF Token:', csrfToken);
+
+    fetch('{% url "ml_models:model_status" %}', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
-        // Atualizar estatísticas na página
-        console.log('Stats updated:', data);
-        location.reload(); // Simplificado - recarrega a página
+        showMessage('Estatísticas atualizadas com sucesso!');
+        setTimeout(() => location.reload(), 1000);
     })
     .catch(error => {
-        console.error('Erro ao atualizar stats:', error);
+        showMessage(`Erro ao atualizar estatísticas: ${error.message}`, true);
+        console.error('Erro:', error);
+    })
+    .finally(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
     });
 }
 
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
+// Inicialização quando o documento estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard ML scripts carregados');
+    
+    // Configurar os event listeners
+    const trainBtn = document.getElementById('trainModelBtn');
+    const refreshBtn = document.getElementById('refreshStatsBtn');
+    
+    console.log('Botões encontrados:', {
+        trainBtn: !!trainBtn,
+        refreshBtn: !!refreshBtn,
+        trainBtnDisabled: trainBtn?.disabled,
+        refreshBtnDisabled: refreshBtn?.disabled
+    });
+    
+    if (trainBtn) {
+        trainBtn.addEventListener('click', function(e) {
+            console.log('Botão de treinamento clicado');
+            e.preventDefault();
+            triggerTraining();
+        });
+        console.log('Event listener adicionado ao botão de treinamento');
+    } else {
+        console.error('Botão de treinamento não encontrado');
     }
-    return cookieValue;
-}
-
-// Auto-refresh a cada 5 minutos
-setInterval(refreshStats, 300000);
+    
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function(e) {
+            console.log('Botão de atualização clicado');
+            e.preventDefault();
+            refreshStats();
+        });
+        console.log('Event listener adicionado ao botão de atualização');
+    } else {
+        console.error('Botão de atualização não encontrado');
+    }
+    
+    // Verificar CSRF token e Modal
+    console.log('CSRF token presente:', !!document.querySelector('[name=csrfmiddlewaretoken]'));
+    console.log('Modal presente:', !!document.getElementById('loadingModal'));
+});
 </script>
-{% endblock %}
+{% endblock extra_js %}

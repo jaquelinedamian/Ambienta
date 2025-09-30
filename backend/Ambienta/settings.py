@@ -8,8 +8,12 @@ LOGIN_URL = 'accounts:login'
 # Sobe três níveis para apontar para a raiz do projeto (e não a pasta 'backend/Ambienta')
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# --- CONFIGURAÇÕES DE DESENVOLVIMENTO ---
 SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
 DEBUG = True  # Forçado para True em desenvolvimento
+
+# Configuração para dados simulados
+USE_MOCK_DATA = config('USE_MOCK_DATA', default=True, cast=bool)
 # DEBUG = config('DEBUG', default=False, cast=bool)  # Comentado temporariamente
 
 # --- 1. CONFIGURAÇÕES DE HOSTS E SEGURANÇA ---

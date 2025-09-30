@@ -142,6 +142,7 @@ class FanOptimizationAPIView(APIView):
         try:
             current_temp = float(request.data.get('current_temperature'))
             current_hour = request.data.get('current_hour', datetime.now().hour)
+            current_day = datetime.now().weekday()
             
             # Buscar modelo ativo
             ml_model = MLModel.objects.filter(
@@ -156,34 +157,50 @@ class FanOptimizationAPIView(APIView):
                     return Response({
                         'recommended_duration_minutes': int(duration),
                         'reason': 'Regra simples (modelo não disponível)',
-                        'should_turn_on': True
+                        'should_turn_on': True,
+                        'confidence': None
                     })
                 else:
                     return Response({
                         'recommended_duration_minutes': 0,
                         'reason': 'Temperatura abaixo do limiar',
-                        'should_turn_on': False
+                        'should_turn_on': False,
+                        'confidence': None
                     })
             
             # Usar modelo ML
             fan_model = FanOptimizationModel()
             fan_model.model = ml_model.load_model()
             
-            optimal_duration = fan_model.optimize_fan_duration(current_temp, current_hour)
+            # Fazer predição
+            should_turn_on, confidence = fan_model.predict(current_temp, current_hour, current_day)
+            
+            # Calcular duração baseada na temperatura e confiança
+            if should_turn_on:
+                base_duration = max(5, (current_temp - 25.0) * 10)
+                optimal_duration = int(base_duration * confidence)
+            else:
+                optimal_duration = 0
             
             # Salvar predição
             MLPrediction.objects.create(
                 model=ml_model,
                 input_data={
                     'current_temperature': current_temp,
-                    'current_hour': current_hour
+                    'current_hour': current_hour,
+                    'current_day': current_day
                 },
-                prediction={'optimal_duration_minutes': optimal_duration}
+                prediction={
+                    'should_turn_on': bool(should_turn_on),
+                    'confidence': float(confidence),
+                    'optimal_duration_minutes': optimal_duration
+                }
             )
             
             return Response({
-                'recommended_duration_minutes': int(optimal_duration),
-                'should_turn_on': optimal_duration > 0,
+                'should_turn_on': bool(should_turn_on),
+                'confidence': float(confidence),
+                'recommended_duration_minutes': optimal_duration,
                 'reason': f'Otimização ML (modelo {ml_model.name})',
                 'current_temperature': current_temp
             }, status=status.HTTP_200_OK)

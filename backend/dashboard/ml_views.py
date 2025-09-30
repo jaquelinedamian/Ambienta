@@ -16,7 +16,7 @@ from ml_models.ml_algorithms import (
 )
 
 
-# @login_required  # Temporariamente comentado para teste
+@login_required
 def ml_dashboard_view(request):
     """
     View específica para dashboard de Machine Learning
@@ -106,6 +106,7 @@ def get_ml_predictions_api(request):
     return JsonResponse({'predictions': data})
 
 
+@login_required
 @login_required
 def ml_stats_api(request):
     """

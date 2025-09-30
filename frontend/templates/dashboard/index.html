@@ -4,11 +4,18 @@
 
 {% block content %}
 <main class="container dashboard-container">
+    <div id="alertContainer"></div>
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Dashboard</h1>
+        <h1 class="h2">
+            <i class="fas fa-tachometer-alt me-2"></i>
+            Dashboard
+        </h1>
         <div class="btn-toolbar mb-2 mb-md-0">
             <div class="btn-group me-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary">Atualizar</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshDashboardBtn">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Atualizar
+                </button>
             </div>
         </div>
     </div>
@@ -16,16 +23,28 @@
     <!-- Primeira linha - Cards principais -->
     <div class="row">
         <div class="col-md-4">
-            <div class="card dashboard-card">
+            <div class="card dashboard-card h-100">
                 <div class="card-body text-center">
-                    <h5 class="card-title">Status do Sistema</h5>
+                    <h5 class="card-title">
+                        <i class="fas fa-fan me-2"></i>
+                        Status do Sistema
+                    </h5>
                     {% if fan_state %}
-                        <p><span class="fan-state {% if fan_state.state %}fan-on{% else %}fan-off{% endif %}">
-                            {% if fan_state.state %}LIGADO{% else %}DESLIGADO{% endif %}
-                        </span></p>
-                        <p class="card-text">Última atualização: {{ fan_state.timestamp }}</p>
+                        <p>
+                            <span class="fan-state {% if fan_state.state %}fan-on{% else %}fan-off{% endif %}">
+                                <i class="fas {% if fan_state.state %}fa-play-circle{% else %}fa-stop-circle{% endif %} me-2"></i>
+                                {% if fan_state.state %}LIGADO{% else %}DESLIGADO{% endif %}
+                            </span>
+                        </p>
+                        <p class="card-text">
+                            <i class="far fa-clock me-1"></i>
+                            Última atualização: {{ fan_state.timestamp }}
+                        </p>
                     {% else %}
-                        <p>Nenhum dado disponível.</p>
+                        <p>
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Nenhum dado disponível.
+                        </p>
                     {% endif %}
                 </div>
             </div>
@@ -33,18 +52,37 @@
         
         <!-- ML Status Card -->
         <div class="col-md-4">
-            <div class="card dashboard-card">
+            <div class="card dashboard-card h-100">
                 <div class="card-body text-center">
-                    <h5 class="card-title">Sistema ML</h5>
+                    <h5 class="card-title">
+                        <i class="fas fa-brain me-2"></i>
+                        Sistema ML
+                    </h5>
                     {% if ml_status.active_models > 0 %}
-                        <p><span class="badge bg-success badge-custom">{{ ml_status.active_models }} modelo(s) ativo(s)</span></p>
+                        <p>
+                            <span class="badge bg-success badge-custom">
+                                <i class="fas fa-check-circle me-1"></i>
+                                {{ ml_status.active_models }} modelo(s) ativo(s)
+                            </span>
+                        </p>
                         {% if ml_status.latest_prediction %}
-                            <p class="card-text small">Última predição: {{ ml_status.latest_prediction.timestamp|timesince }} atrás</p>
+                            <p class="card-text small">
+                                <i class="far fa-clock me-1"></i>
+                                Última predição: {{ ml_status.latest_prediction.timestamp|timesince }} atrás
+                            </p>
                         {% endif %}
                     {% else %}
-                        <p><span class="badge bg-warning badge-custom">Nenhum modelo ativo</span></p>
+                        <p>
+                            <span class="badge bg-warning badge-custom">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Nenhum modelo ativo
+                            </span>
+                        </p>
                     {% endif %}
-                    <a href="{% url 'dashboard:ml_dashboard' %}" class="btn btn-primary btn-sm">Ver Dashboard ML</a>
+                    <a href="{% url 'ml_models:ml_dashboard' %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-chart-line me-1"></i>
+                        Ver Dashboard ML
+                    </a>
                 </div>
             </div>
         </div>
@@ -619,6 +657,39 @@
     });
 </script>
 <style>
+  /* Estilos do Dashboard */
+  .dashboard-card {
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      transition: transform 0.2s;
+      border: none;
+      border-radius: 8px;
+  }
+  .dashboard-card:hover {
+      transform: translateY(-2px);
+  }
+  .fan-state {
+      font-weight: bold;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+  }
+  .fan-on {
+      background-color: #28a745;
+      color: white;
+  }
+  .fan-off {
+      background-color: #dc3545;
+      color: white;
+  }
+  .badge-custom {
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+  }
+  .chart-container {
+      position: relative;
+      height: 300px;
+      width: 100%;
+  }
+  
   /* ESTILOS DO CALENDÁRIO */
   #calendar-container {
       display: flex;
@@ -682,4 +753,81 @@
       background-color: #0056b3;
   }
 </style>
-{% endblock %}
+
+{% endblock content %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Função para mostrar mensagens de alerta
+function showMessage(message, isError = false) {
+    console.log('showMessage chamada:', { message, isError });
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${isError ? 'danger' : 'success'} alert-dismissible fade show`;
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    const alertContainer = document.getElementById('alertContainer');
+    console.log('Alert container encontrado:', !!alertContainer);
+    if (alertContainer) {
+        alertContainer.appendChild(alertDiv);
+    } else {
+        document.querySelector('main').insertBefore(alertDiv, document.querySelector('main').firstChild);
+    }
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Função para atualizar o dashboard
+function refreshDashboard() {
+    console.log('Função refreshDashboard chamada');
+    const btn = document.getElementById('refreshDashboardBtn');
+    if (!btn) {
+        console.error('Botão de atualização não encontrado');
+        return;
+    }
+    
+    console.log('Botão encontrado:', btn);
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Atualizando...';
+    btn.disabled = true;
+
+    window.location.reload();
+}
+
+// Inicialização quando o documento estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard scripts carregados');
+    
+    // Configurar o event listener do botão de atualização
+    const refreshBtn = document.getElementById('refreshDashboardBtn');
+    console.log('Botão de atualização encontrado:', !!refreshBtn);
+    
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function(e) {
+            console.log('Botão de atualização clicado');
+            e.preventDefault();
+            refreshDashboard();
+        });
+        console.log('Event listener adicionado ao botão de atualização');
+    } else {
+        console.error('Botão de atualização não encontrado');
+    }
+
+    // Verificar e inicializar gráficos
+    const charts = ['temperatureChart', 'barChart', 'pieChart'];
+    charts.forEach(chartId => {
+        const ctx = document.getElementById(chartId);
+        if (ctx) {
+            console.log(`Canvas do gráfico ${chartId} encontrado`);
+        } else {
+            console.warn(`Canvas do gráfico ${chartId} não encontrado`);
+        }
+    });
+});
+</script>
+{% endblock extra_js %}
