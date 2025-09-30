@@ -1,0 +1,10 @@
+.hero {
+    background: url("{% static 'img/hero-bg.png' %}") no-repeat center center;
+    background-size: cover;
+    color: #fff;
+}
+
+.icon-img {
+    width: 64px;
+    height: 64px;
+}
