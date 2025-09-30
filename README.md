@@ -46,10 +46,15 @@ O **Ambienta** é um sistema inteligente de climatização que utiliza Machine L
 - **Sistema de Login**: Autenticação segura de usuários
 
 ### 🤖 Inteligência Artificial
-- **Predição de temperatura** das próximas horas
-- **Otimização automática** do tempo de funcionamento do ventilador
-- **Detecção de anomalias** em leituras de sensores
-- **Retreinamento automático** dos modelos
+- **Predição de temperatura** das próximas horas usando modelos de regressão
+- **Otimização automática do ventilador** usando aprendizado por reforço:
+  - Análise de padrões de temperatura
+  - Adaptação a diferentes períodos do dia
+  - Economia de energia vs efetividade
+  - Feedback contínuo para melhorias
+- **Detecção de anomalias** em leituras de sensores usando Isolation Forest
+- **Sistema de ML adaptativo** com retreinamento automático
+- **Métricas em tempo real** de performance dos modelos
 
 ### 🌐 Sistema Web
 - **Dashboard interativo** com estatísticas em tempo real
@@ -183,15 +188,17 @@ SECRET_KEY=sua-chave-secreta-aqui
 DEBUG=True
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
 
-# Banco de Dados (opcional)
-DATABASE_URL=postgres://user:password@localhost:5432/ambienta
+# Banco de Dados
+DATABASE_URL=sqlite:///db.sqlite3
 
-# MQTT (opcional)
-MQTT_BROKER=broker.hivemq.com
+# MQTT
+MQTT_BROKER=localhost
 MQTT_PORT=1883
+MQTT_TOPIC=sensors/#
+MQTT_CLIENT_ID=ambienta_backend
 
-# Segurança (produção)
-CSRF_TRUSTED_ORIGINS=https://seudominio.com
+# Machine Learning
+USE_MOCK_DATA=False  # True para dados simulados em desenvolvimento
 ```
 
 ### Configuração MQTT
@@ -269,15 +276,35 @@ GET /api/ml/predict-temperature/
 ```
 
 ### ⚙️ Otimização do Ventilador
+- **🧠 Modelo**: Random Forest Classifier
+- **📊 Features**: Temperatura atual, hora do dia, histórico de efetividade
+- **📈 Métricas**:
+  - Economia de energia vs. controle manual
+  - Efetividade na redução de temperatura
+  - Nível de confiança nas decisões
+
 ```python
 # Recomendação automática
-GET /api/ml/fan-optimization/
+POST /api/ml/optimize/fan/
 {
-  "should_turn_on": true,
-  "optimal_duration": 120,  # segundos
-  "energy_efficiency": 0.87
+  "current_temperature": 27.5,
+  "current_hour": 14,
+  
+  "response": {
+    "should_turn_on": true,
+    "recommended_duration_minutes": 15,
+    "confidence": 0.85,
+    "reason": "Temperatura elevada e histórico de efetividade positivo"
+  }
 }
 ```
+
+#### Dashboard de Otimização
+- **Estado Atual**: Status do ventilador e confiança do modelo
+- **Métricas de Performance**:
+  - Economia de energia vs. controle manual
+  - Efetividade média na redução de temperatura
+- **Histórico**: Últimas ações e seus resultados
 
 ### 🚨 Detecção de Anomalias
 ```python
