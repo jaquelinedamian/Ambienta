@@ -205,40 +205,50 @@ class FanOptimizationModel:
         end_date = timezone.now()
         start_date = end_date - timedelta(days=days_back)
         
-        # Buscar logs do ventilador
-        fan_logs = FanLog.objects.filter(
-            start_time__gte=start_date,
-            end_time__isnull=False
-        )
+        # Buscar estados do ventilador
+        fan_states = FanState.objects.filter(
+            timestamp__gte=start_date,
+            timestamp__lte=end_date
+        ).order_by('timestamp')
         
         data = []
-        for log in fan_logs:
-            # Buscar temperaturas antes, durante e depois
-            temp_before = Reading.objects.filter(
-                timestamp__lt=log.start_time,
-                timestamp__gte=log.start_time - timedelta(minutes=30)
-            ).aggregate(avg_temp=models.Avg('temperature'))['avg_temp']
+        for i in range(len(fan_states) - 1):
+            current_state = fan_states[i]
+            next_state = fan_states[i + 1]
             
-            temp_during = Reading.objects.filter(
-                timestamp__gte=log.start_time,
-                timestamp__lte=log.end_time
-            ).aggregate(avg_temp=models.Avg('temperature'))['avg_temp']
-            
-            temp_after = Reading.objects.filter(
-                timestamp__gt=log.end_time,
-                timestamp__lte=log.end_time + timedelta(minutes=30)
-            ).aggregate(avg_temp=models.Avg('temperature'))['avg_temp']
-            
-            if all([temp_before, temp_during, temp_after]):
-                data.append({
-                    'temp_before': temp_before,
-                    'temp_during': temp_during,
-                    'temp_after': temp_after,
-                    'duration_minutes': log.duration.total_seconds() / 60,
-                    'hour': log.start_time.hour,
-                    'day_of_week': log.start_time.weekday(),
-                    'cooling_efficiency': temp_before - temp_after
-                })
+            if current_state.state:  # Se o ventilador está ligado
+                # Calcular duração do ciclo
+                duration = (next_state.timestamp - current_state.timestamp).total_seconds() / 60
+                
+                # Pegar temperatura no início do ciclo
+                temp_before = Reading.objects.filter(
+                    timestamp__lte=current_state.timestamp
+                ).order_by('-timestamp').first()
+                
+                # Pegar temperatura no fim do ciclo
+                temp_after = Reading.objects.filter(
+                    timestamp__gte=next_state.timestamp
+                ).order_by('timestamp').first()
+                
+                # Pegar temperaturas durante o ciclo
+                temps_during = Reading.objects.filter(
+                    timestamp__gt=current_state.timestamp,
+                    timestamp__lt=next_state.timestamp
+                ).values_list('temperature', flat=True)
+                
+                if temp_before and temp_after and temps_during:
+                    temp_during_avg = sum(temps_during) / len(temps_during) if temps_during else None
+                    
+                    if temp_during_avg:
+                        data.append({
+                            'temp_before': temp_before.temperature,
+                            'temp_during': temp_during_avg,
+                            'temp_after': temp_after.temperature,
+                            'duration_minutes': duration,
+                            'hour': current_state.timestamp.hour,
+                            'day_of_week': current_state.timestamp.weekday(),
+                            'cooling_efficiency': temp_before.temperature - temp_after.temperature
+                        })
         
         return pd.DataFrame(data)
     

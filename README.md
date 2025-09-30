@@ -283,6 +283,31 @@ GET /api/ml/predict-temperature/
   - Efetividade na redução de temperatura
   - Nível de confiança nas decisões
 
+### 🔄 Treinamento dos Modelos
+
+Os modelos de ML precisam ser treinados quando o sistema é implantado em produção. Para treinar:
+
+1. Certifique-se que existe um histórico mínimo de dados:
+   - Temperatura: pelo menos 10 amostras
+   - Estados do ventilador: pelo menos 5 ciclos liga/desliga
+   - Leituras de sensores: pelo menos 100 amostras
+
+2. Execute o comando de treinamento:
+```bash
+python manage.py shell -c "from ml_models.ml_algorithms import train_all_models; print(train_all_models())"
+```
+
+3. Verifique as métricas de performance retornadas:
+   - R² > 0.7 para predição de temperatura
+   - R² > 0.5 para otimização do ventilador
+   - Taxa de anomalias ≈ 10%
+
+⚠️ **Importante**: 
+- Os modelos treinados (arquivos `.pkl`) são gerados automaticamente
+- Não versione os arquivos `.pkl` no Git, eles são específicos para cada ambiente
+- Em desenvolvimento, use `USE_MOCK_DATA=True` para gerar dados simulados
+- Em produção, treine com dados reais após acumular histórico suficiente
+
 ```python
 # Recomendação automática
 POST /api/ml/optimize/fan/
