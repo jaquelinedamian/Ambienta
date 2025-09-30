@@ -593,17 +593,28 @@ function triggerTraining() {
     })
     .then(data => {
         loadingModal.hide();
-        if (data.success) {
-            showMessage('Treinamento concluído com sucesso!');
+        console.log('Resposta do servidor:', data); // Para debug
+        
+        if (!data.error) {
+            showMessage(data.message || 'Treinamento concluído com sucesso!');
             setTimeout(() => location.reload(), 1500);
         } else {
-            showMessage(data.error || 'Erro desconhecido no treinamento', true);
+            let errorMessage = data.message;
+            if (data.details?.description) {
+                errorMessage += '\nDetalhes: ' + data.details.description;
+            }
+            showMessage(errorMessage, true);
+            
+            // Log detalhado no console para debug
+            if (data.details) {
+                console.log('Detalhes do erro:', data.details);
+            }
         }
     })
     .catch(error => {
         loadingModal.hide();
-        showMessage(`Erro na requisição: ${error.message}`, true);
-        console.error('Erro:', error);
+        showMessage(`Erro na comunicação com o servidor: ${error.message}`, true);
+        console.error('Erro na requisição:', error);
     });
 }
 

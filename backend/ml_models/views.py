@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.utils import timezone
+from django.conf import settings
 from datetime import datetime, timedelta
 import json
 
@@ -28,14 +29,44 @@ class TrainModelsAPIView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
+        training_session = None
         try:
             # Iniciar sessão de treinamento
             training_session = TrainingSession.objects.create(
                 model=None,  # Será atualizado depois
                 data_start_date=timezone.now() - timedelta(days=30),
                 data_end_date=timezone.now(),
-                status='running'
+                status='running',
+                training_samples=0
             )
+            
+            # Validar dados disponíveis
+            from sensors.models import Reading, FanState
+            end_date = timezone.now()
+            start_date = end_date - timedelta(days=30)
+            
+            readings_count = Reading.objects.filter(
+                timestamp__gte=start_date,
+                timestamp__lte=end_date
+            ).count()
+            
+            fan_states_count = FanState.objects.filter(
+                timestamp__gte=start_date,
+                timestamp__lte=end_date
+            ).count()
+            
+            training_session.training_metrics = {
+                'data_validation': {
+                    'readings_available': readings_count,
+                    'fan_states_available': fan_states_count,
+                    'start_date': start_date.isoformat(),
+                    'end_date': end_date.isoformat()
+                }
+            }
+            training_session.save()
+            
+            if readings_count < 10:
+                raise ValueError(f"Dados insuficientes para treinamento. Encontrados apenas {readings_count} registros nos últimos 30 dias.")
             
             # Treinar modelos
             results = train_all_models()
@@ -43,24 +74,55 @@ class TrainModelsAPIView(APIView):
             # Atualizar sessão
             training_session.status = 'completed'
             training_session.completed_at = timezone.now()
-            training_session.training_metrics = results
+            training_session.training_metrics.update(results)
             training_session.save()
             
             return Response({
                 'message': 'Modelos treinados com sucesso',
-                'results': results,
-                'training_session_id': training_session.id
+                'error': False,
+                'details': {
+                    'results': results,
+                    'data_summary': training_session.training_metrics['data_validation'],
+                    'training_session_id': training_session.id
+                }
             }, status=status.HTTP_200_OK)
             
-        except Exception as e:
-            if 'training_session' in locals():
+        except ValueError as e:
+            error_message = f"Dados insuficientes para treinamento: {str(e)}"
+            if training_session:
                 training_session.status = 'failed'
-                training_session.error_message = str(e)
+                training_session.error_message = error_message
                 training_session.save()
             
             return Response({
-                'error': 'Erro durante o treinamento',
-                'details': str(e)
+                'message': error_message,
+                'error': True,
+                'details': {
+                    'type': 'insufficient_data',
+                    'description': str(e),
+                    'data_summary': training_session.training_metrics.get('data_validation') if training_session else None
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            error_message = f"Erro durante o treinamento: {str(e)}"
+            
+            if training_session:
+                training_session.status = 'failed'
+                training_session.error_message = f"{error_message}\n\nStack trace:\n{error_details}"
+                training_session.save()
+            
+            return Response({
+                'message': error_message,
+                'error': True,
+                'details': {
+                    'type': 'training_error',
+                    'description': str(e),
+                    'stack_trace': error_details if settings.DEBUG else None,
+                    'data_summary': training_session.training_metrics.get('data_validation') if training_session else None
+                }
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
