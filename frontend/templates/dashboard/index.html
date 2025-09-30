@@ -5,22 +5,24 @@
 {% block content %}
 <main class="container dashboard-container">
     <div id="alertContainer"></div>
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">
-            <i class="fas fa-tachometer-alt me-2"></i>
-            Dashboard
-        </h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <div class="btn-group me-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshDashboardBtn">
-                    <i class="fas fa-sync-alt me-1"></i>
-                    Atualizar
-                </button>
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">
+                <i class="fas fa-tachometer-alt me-2"></i>
+                Dashboard
+            </h1>
+            <div class="btn-toolbar mb-2 mb-md-0">
+                <div class="btn-group me-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshDashboardBtn">
+                        <i class="fas fa-sync-alt me-1"></i>
+                        Atualizar
+                    </button>
+                </div>
+                <a href="{% url 'ml_models:ml_dashboard' %}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-chart-line me-1"></i>
+                    Ver Dashboard ML
+                </a>
             </div>
-        </div>
-    </div>
-
-    <!-- Primeira linha - Cards principais -->
+        </div>    <!-- Primeira linha - Cards principais -->
     <div class="row">
         <div class="col-md-4">
             <div class="card dashboard-card h-100">
@@ -30,21 +32,21 @@
                         Status do Sistema
                     </h5>
                     {% if fan_state %}
-                        <p>
-                            <span class="fan-state {% if fan_state.state %}fan-on{% else %}fan-off{% endif %}">
-                                <i class="fas {% if fan_state.state %}fa-play-circle{% else %}fa-stop-circle{% endif %} me-2"></i>
-                                {% if fan_state.state %}LIGADO{% else %}DESLIGADO{% endif %}
-                            </span>
-                        </p>
-                        <p class="card-text">
-                            <i class="far fa-clock me-1"></i>
-                            Última atualização: {{ fan_state.timestamp }}
-                        </p>
+                    <p>
+                        <span class="fan-state {% if fan_state.state %}fan-on{% else %}fan-off{% endif %}">
+                            <i class="fas {% if fan_state.state %}fa-play-circle{% else %}fa-stop-circle{% endif %} me-2"></i>
+                            {% if fan_state.state %}LIGADO{% else %}DESLIGADO{% endif %}
+                        </span>
+                    </p>
+                    <p class="dashboard-status-info time-info">
+                        <i class="far fa-clock"></i>
+                        Última atualização: {{ fan_state.timestamp|timesince }} atrás
+                    </p>
                     {% else %}
-                        <p>
-                            <i class="fas fa-exclamation-circle me-2"></i>
-                            Nenhum dado disponível.
-                        </p>
+                    <p class="dashboard-status-info">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Nenhum dado disponível
+                    </p>
                     {% endif %}
                 </div>
             </div>
@@ -59,46 +61,52 @@
                         Sistema ML
                     </h5>
                     {% if ml_status.active_models > 0 %}
-                        <p>
-                            <span class="badge bg-success badge-custom">
-                                <i class="fas fa-check-circle me-1"></i>
-                                {{ ml_status.active_models }} modelo(s) ativo(s)
-                            </span>
-                        </p>
-                        {% if ml_status.latest_prediction %}
-                            <p class="card-text small">
-                                <i class="far fa-clock me-1"></i>
-                                Última predição: {{ ml_status.latest_prediction.timestamp|timesince }} atrás
-                            </p>
-                        {% endif %}
-                    {% else %}
-                        <p>
-                            <span class="badge bg-warning badge-custom">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                Nenhum modelo ativo
-                            </span>
-                        </p>
+                    <p>
+                        <span class="badge bg-success badge-custom">
+                            <i class="fas fa-check-circle me-1"></i>
+                            {{ ml_status.active_models }} modelo(s) ativo(s)
+                        </span>
+                    </p>
+                    {% if ml_status.latest_prediction %}
+                    <p class="dashboard-status-info time-info">
+                        <i class="far fa-clock"></i>
+                        Última predição: {{ ml_status.latest_prediction.timestamp|timesince }} atrás
+                    </p>
                     {% endif %}
-                    <a href="{% url 'ml_models:ml_dashboard' %}" class="btn btn-primary btn-sm">
-                        <i class="fas fa-chart-line me-1"></i>
-                        Ver Dashboard ML
-                    </a>
+                    {% else %}
+                    <p>
+                        <span class="badge bg-warning badge-custom">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            Nenhum modelo ativo
+                        </span>
+                    </p>
+                    {% endif %}
                 </div>
             </div>
         </div>
 
         <!-- Anomaly Detection Card -->
         <div class="col-md-4">
-            <div class="card dashboard-card">
+            <div class="card dashboard-card h-100">
                 <div class="card-body text-center">
-                    <h5 class="card-title">Detecção de Anomalias</h5>
+                    <h5 class="card-title">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Detecção de Anomalias
+                    </h5>
                     {% if ml_status.anomalies_today > 0 %}
-                        <p><span class="badge bg-danger badge-custom">{{ ml_status.anomalies_today }} anomalia(s) hoje</span></p>
+                    <p>
+                        <span class="badge bg-danger badge-custom">{{ ml_status.anomalies_today }} anomalia(s) hoje</span>
+                    </p>
                     {% else %}
-                        <p><span class="badge bg-success badge-custom">Nenhuma anomalia detectada</span></p>
+                    <p>
+                        <span class="badge bg-success badge-custom">Nenhuma anomalia detectada</span>
+                    </p>
                     {% endif %}
                     {% if ml_status.latest_anomaly %}
-                        <p class="card-text small">Última anomalia: {{ ml_status.latest_anomaly.timestamp|timesince }} atrás</p>
+                    <p class="dashboard-status-info time-info">
+                        <i class="far fa-clock"></i>
+                        Última anomalia: {{ ml_status.latest_anomaly.timestamp|timesince }} atrás
+                    </p>
                     {% endif %}
                 </div>
             </div>

@@ -28,13 +28,45 @@ def ml_dashboard(request):
     # Buscar últimas predições com seus modelos relacionados
     recent_predictions = MLPrediction.objects.select_related('model').order_by('-created_at')[:10]
     
-    # Converter os dados de predição para um formato mais amigável
+    # Converter e formatar os dados de predição para um formato mais amigável
     for prediction in recent_predictions:
+        # Converter de string para dict se necessário
         if isinstance(prediction.prediction, str):
             try:
                 prediction.prediction = json.loads(prediction.prediction)
             except json.JSONDecodeError:
-                pass
+                continue
+        
+        # Garantir que prediction.prediction é um dicionário
+        if not isinstance(prediction.prediction, dict):
+            prediction.prediction = {}
+        
+        # Formatar dados específicos para cada tipo de modelo
+        if prediction.model.model_type == 'temperature_prediction':
+            # Garantir que temperatures é uma lista
+            if 'temperatures' not in prediction.prediction:
+                prediction.prediction = {
+                    'temperatures': [prediction.prediction.get('predicted_temp', 0.0)]
+                }
+            elif isinstance(prediction.prediction['temperatures'], (int, float)):
+                prediction.prediction['temperatures'] = [prediction.prediction['temperatures']]
+        
+        elif prediction.model.model_type == 'fan_optimization':
+            # Garantir campos necessários para otimização do ventilador
+            default_fan_data = {
+                'should_turn_on': prediction.prediction.get('should_turn_on', False),
+                'recommended_duration_minutes': prediction.prediction.get('recommended_duration_minutes', 0),
+                'confidence': prediction.prediction.get('confidence', 0.0)
+            }
+            prediction.prediction.update(default_fan_data)
+        
+        elif prediction.model.model_type == 'anomaly_detection':
+            # Garantir campos necessários para detecção de anomalias
+            default_anomaly_data = {
+                'is_anomaly': prediction.prediction.get('is_anomaly', False),
+                'anomaly_score': prediction.prediction.get('anomaly_score', 0.0)
+            }
+            prediction.prediction.update(default_anomaly_data)
     
     # Predições nas últimas 24h por tipo de modelo
     last_24h = timezone.now() - timedelta(hours=24)

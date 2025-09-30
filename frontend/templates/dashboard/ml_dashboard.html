@@ -272,22 +272,37 @@
                                 </div>
                                 <div class="text-end">
                                     {% if prediction.model.model_type == 'temperature_prediction' %}
-                                        <span class="badge bg-info">
-                                            {{ prediction.prediction.predicted_temp|floatformat:1 }}°C
+                                        {% if prediction.prediction.temperatures %}
+                                            <span class="badge bg-info">
+                                                {{ prediction.prediction.temperatures.0|floatformat:1 }}°C
+                                            </span>
+                                            {% if prediction.prediction.temperatures|length > 1 %}
+                                                <br>
+                                                <small class="text-muted">
+                                                    +1h: {{ prediction.prediction.temperatures.1|floatformat:1 }}°C
+                                                </small>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% elif prediction.model.model_type == 'fan_optimization' %}
+                                        <span class="badge {% if prediction.prediction.should_turn_on %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ prediction.prediction.should_turn_on|yesno:"Ligar,Manter Desligado" }}
                                         </span>
-                                        <br>
-                                        <small class="text-muted">
-                                            IC: [{{ prediction.prediction.confidence_interval.0|floatformat:1 }}°C,
-                                                {{ prediction.prediction.confidence_interval.1|floatformat:1 }}°C]
-                                        </small>
+                                        {% if prediction.prediction.recommended_duration_minutes %}
+                                            <br>
+                                            <small class="text-muted">
+                                                {{ prediction.prediction.recommended_duration_minutes }} min
+                                            </small>
+                                        {% endif %}
                                     {% elif prediction.model.model_type == 'anomaly_detection' %}
                                         <span class="badge {% if prediction.prediction.is_anomaly %}bg-danger{% else %}bg-success{% endif %}">
                                             {{ prediction.prediction.is_anomaly|yesno:"Anomalia,Normal" }}
                                         </span>
-                                        <br>
-                                        <small class="text-muted">
-                                            Score: {{ prediction.prediction.anomaly_score|floatformat:2 }}
-                                        </small>
+                                        {% if prediction.prediction.anomaly_score %}
+                                            <br>
+                                            <small class="text-muted">
+                                                Score: {{ prediction.prediction.anomaly_score|floatformat:2 }}
+                                            </small>
+                                        {% endif %}
                                     {% endif %}
                                     <br>
                                     <small class="text-muted">Conf: {{ prediction.confidence|floatformat:2 }}</small>
