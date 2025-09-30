@@ -8,7 +8,6 @@ Django==5.2.6
 django-allauth==65.11.2
 django-crispy-forms==2.4
 djangorestframework==3.16.1
-pygdal==3.6.2.11
 msgpack==1.1.1
 paho-mqtt==2.1.0
 psycopg2-binary==2.9.10
@@ -18,3 +17,10 @@ redis==5.0.8
 sqlparse==0.5.3
 whitenoise==6.11.0
 gunicorn
+# Machine Learning Libraries
+scikit-learn==1.5.1
+numpy==1.26.4
+pandas==2.2.2
+joblib==1.4.2
+matplotlib==3.9.2
+seaborn==0.13.2

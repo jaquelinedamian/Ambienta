@@ -10,8 +10,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('home.urls')),
     path('accounts/', include('accounts.urls')),
+    path('accounts/', include('allauth.urls')),  # URLs do django-allauth
     path('dashboard/', include('dashboard.urls')),
     path('sensors/', include('sensors.urls')),
+    path('ml/', include('ml_models.urls')),
 ]
 
 # ESTA É A CORREÇÃO PRINCIPAL: Adicionar o manuseio de arquivos estáticos e de mídia em modo DEBUG
