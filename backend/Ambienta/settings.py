@@ -10,16 +10,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # --- CONFIGURAÇÕES DE DESENVOLVIMENTO ---
 SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
-DEBUG = True  # Forçado para True em desenvolvimento
-
-# Configuração para dados simulados
-USE_MOCK_DATA = config('USE_MOCK_DATA', default=True, cast=bool)
-# DEBUG = config('DEBUG', default=False, cast=bool)  # Comentado temporariamente
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 # --- 1. CONFIGURAÇÕES DE HOSTS E SEGURANÇA ---
 
 # LENDO APENAS UMA VARIÁVEL: Django_Allowed_Hosts
-ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='*', cast=Csv())
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='', cast=Csv())
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 # Configurações Condicionais (DEBUG vs. Produção)
@@ -34,24 +30,6 @@ if DEBUG:
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
-    SECURE_HSTS_SECONDS = 0
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
-    SECURE_HSTS_PRELOAD = False
-    
-    # Desabilitar proxy SSL para desenvolvimento local
-    SECURE_PROXY_SSL_HEADER = None
-    
-    # Forçar HTTP em desenvolvimento
-    SECURE_SCHEMA = 'http'
-    
-    # Desabilitar redirecionamento para HTTPS permanentemente
-    SECURE_REDIRECT_EXEMPT = [r'^.*$']  # Todas as URLs são isentas de redirecionamento HTTPS
-    
-    # NOVA: Desabilitar HSTS completamente em desenvolvimento
-    SECURE_HSTS_SECONDS = None
-    
-    # NOVA: Garantir que não há upgrade para HTTPS
-    USE_TLS = False
 else:
     # --- AJUSTE PARA O RENDER (INJEÇÃO FORÇADA DO DOMÍNIO) ---
     RENDER_EXTERNAL_HOSTNAME = 'ambienta-83aj.onrender.com'
@@ -112,9 +90,8 @@ CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 MIDDLEWARE = [
-    # 'django.middleware.security.SecurityMiddleware',  # Removido temporariamente para teste
-    # 'whitenoise.middleware.WhiteNoiseMiddleware',  # Removido temporariamente
-    'Ambienta.middleware.ForceHTTPMiddleware',  # Middleware customizado para forçar HTTP
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -163,8 +140,8 @@ AUTHENTICATION_BACKENDS = (
 
 # Configurações atualizadas do allauth (corrigindo deprecações)
 ACCOUNT_EMAIL_VERIFICATION = config('ACCOUNT_EMAIL_VERIFICATION', default='optional')
-ACCOUNT_LOGIN_METHODS = {'username', 'email'}  # Substitui ACCOUNT_AUTHENTICATION_METHOD
-ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']  # Substitui ACCOUNT_EMAIL_REQUIRED
+ACCOUNT_AUTHENTICATION_METHOD = config('ACCOUNT_AUTHENTICATION_METHOD', default='username_email')
+ACCOUNT_EMAIL_REQUIRED = config('ACCOUNT_EMAIL_REQUIRED', default=True, cast=bool)
 
 # URLs de redirecionamento
 LOGIN_REDIRECT_URL = '/'
