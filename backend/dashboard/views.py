@@ -14,8 +14,6 @@ from django.utils import timezone
 from datetime import timedelta, datetime
 import requests
 from django.contrib.auth.decorators import login_required
-from django.conf import settings
-from ml_models.mock_data import generate_mock_ml_data
 
 
 # @login_required  # Removido temporariamente para teste
@@ -77,33 +75,19 @@ def dashboard_view(request):
         model__model_type='anomaly_detection'
     ).order_by('-created_at').first()
     
-    # Verificar se devemos usar dados simulados
-    use_mock = getattr(settings, 'USE_MOCK_DATA', False)
-    
-    if use_mock:
-        print("Usando dados simulados de ML")
-        ml_data = generate_mock_ml_data()
-        ml_status = {
-            'active_models': ml_data['active_models'],
-            'latest_prediction': ml_data['latest_prediction'],
-            'anomalies_today': ml_data['anomalies_today'],
-            'latest_anomaly': ml_data['latest_anomaly'],
-            'recent_predictions': ml_data['recent_predictions']
-        }
-    else:
-        # Estrutura ml_status que o template espera
-        ml_status = {
-            'active_models': active_models.count(),
-            'latest_prediction': recent_predictions.first() if recent_predictions.exists() else None,
-            'anomalies_today': anomalies_today,
-            'latest_anomaly': latest_anomaly,
-            'temperature_prediction': latest_temp_prediction,
-            'fan_recommendation': {
-                'should_be_on': latest_fan_prediction.prediction.get('should_be_on', False) if latest_fan_prediction else False,
-                'energy_savings': latest_fan_prediction.prediction.get('energy_savings', 0) if latest_fan_prediction else 0
-            } if latest_fan_prediction else None,
-            'anomaly_score': latest_anomaly_score.prediction.get('anomaly_score', 0) if latest_anomaly_score else None
-        }
+    # Estrutura ml_status que o template espera
+    ml_status = {
+        'active_models': active_models.count(),
+        'latest_prediction': recent_predictions.first() if recent_predictions.exists() else None,
+        'anomalies_today': anomalies_today,
+        'latest_anomaly': latest_anomaly,
+        'temperature_prediction': latest_temp_prediction,
+        'fan_recommendation': {
+            'should_be_on': latest_fan_prediction.prediction.get('should_be_on', False) if latest_fan_prediction else False,
+            'energy_savings': latest_fan_prediction.prediction.get('energy_savings', 0) if latest_fan_prediction else 0
+        } if latest_fan_prediction else None,
+        'anomaly_score': latest_anomaly_score.prediction.get('anomaly_score', 0) if latest_anomaly_score else None
+    }
     
     # Leitura mais recente
     latest_reading = readings_list.first()
