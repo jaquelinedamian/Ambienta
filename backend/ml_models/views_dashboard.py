@@ -8,19 +8,65 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q, Avg, F, ExpressionWrapper, FloatField
 from sensors.models import FanState, FanLog, Reading
 from django.conf import settings
+from functools import wraps
+from django.http import HttpResponse
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
+
+def handle_dashboard_errors(view_func):
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        try:
+            return view_func(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Erro no dashboard ML: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Contexto mínimo para o template
+            error_context = {
+                'error_message': 'Desculpe, ocorreu um erro ao carregar o dashboard.',
+                'active_models': [],
+                'recent_predictions': [],
+                'predictions_24h': 0,
+                'anomaly_predictions': [],
+                'anomalies_today': 0,
+                'total_predictions': 0,
+                'recent_training': [],
+                'fan_state': False,
+                'fan_confidence': None,
+                'energy_savings': 0,
+                'fan_effectiveness': 0,
+                'fan_optimization_history': []
+            }
+            
+            return render(request, 'dashboard/ml_dashboard.html', error_context)
+    return wrapper
 
 @login_required
+@handle_dashboard_errors
 def ml_dashboard(request):
     """View para o dashboard de Machine Learning"""
     
     print("\n=== INÍCIO DO PROCESSAMENTO DA VIEW ===")
     print(f"DEBUG - URL acessada: {request.path}")
 
-    # Buscar modelos ativos
-    active_models = MLModel.objects.filter(is_active=True)
+    try:
+        # Buscar modelos ativos
+        active_models = MLModel.objects.filter(is_active=True)
+        if not active_models.exists():
+            logger.warning("Nenhum modelo ML ativo encontrado")
+    except Exception as e:
+        logger.error(f"Erro ao buscar modelos ativos: {e}")
+        active_models = MLModel.objects.none()
     
-    # Buscar últimas predições com seus modelos relacionados
-    recent_predictions = MLPrediction.objects.select_related('model').order_by('-created_at')[:10]
+    try:
+        # Buscar últimas predições com seus modelos relacionados
+        recent_predictions = MLPrediction.objects.select_related('model').order_by('-created_at')[:10]
+    except Exception as e:
+        logger.error(f"Erro ao buscar predições recentes: {e}")
+        recent_predictions = MLPrediction.objects.none()
     
     # Converter e formatar os dados de predição para um formato mais amigável
     for prediction in recent_predictions:
@@ -195,16 +241,7 @@ def ml_dashboard(request):
     anomalies_today = anomalies.count()
     
     print("\n=== INICIALIZANDO DADOS DO VENTILADOR ===")
-    # Inicializar dados do ventilador
-    fan_data = {
-        'fan_state': fan_state,
-        'fan_confidence': fan_confidence,
-        'energy_savings': round(energy_savings, 1),
-        'fan_effectiveness': round(fan_effectiveness, 1),
-        'fan_optimization_history': fan_optimization_history
-    }
-
-    # Garantir valores padrão para todos os campos necessários
+    # Valores padrão para segurança
     default_fan_data = {
         'fan_state': False,
         'fan_confidence': None,
@@ -213,8 +250,33 @@ def ml_dashboard(request):
         'fan_optimization_history': []
     }
     
-    # Atualizar com dados reais se disponíveis
-    fan_data.update(default_fan_data)
+    try:
+        # Inicializar dados do ventilador com valores reais
+        fan_data = {
+            'fan_state': fan_state,
+            'fan_confidence': fan_confidence,
+            'energy_savings': round(float(energy_savings), 1) if energy_savings is not None else 0,
+            'fan_effectiveness': round(float(fan_effectiveness), 1) if fan_effectiveness is not None else 0,
+            'fan_optimization_history': fan_optimization_history if fan_optimization_history else []
+        }
+        
+        # Validar dados antes de usar
+        if not isinstance(fan_data['energy_savings'], (int, float)):
+            logger.warning(f"Valor inválido para energy_savings: {fan_data['energy_savings']}")
+            fan_data['energy_savings'] = 0
+            
+        if not isinstance(fan_data['fan_effectiveness'], (int, float)):
+            logger.warning(f"Valor inválido para fan_effectiveness: {fan_data['fan_effectiveness']}")
+            fan_data['fan_effectiveness'] = 0
+            
+    except Exception as e:
+        logger.error(f"Erro ao processar dados do ventilador: {e}")
+        fan_data = default_fan_data.copy()
+    
+    # Garantir que todos os campos necessários existem
+    for key in default_fan_data:
+        if key not in fan_data:
+            fan_data[key] = default_fan_data[key]
     
     # Montar contexto completo
     context = {
