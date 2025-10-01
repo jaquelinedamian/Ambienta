@@ -1,0 +1,13 @@
+{% if error_message %}
+<div class="alert alert-warning" role="alert">
+    {{ error_message }}
+    <p class="small text-muted mt-2">
+        Se o problema persistir, verifique:
+        <ul>
+            <li>Se há conexão com o banco de dados</li>
+            <li>Se os modelos de ML foram treinados</li>
+            <li>Se há dados suficientes para análise</li>
+        </ul>
+    </p>
+</div>
+{% endif %}
