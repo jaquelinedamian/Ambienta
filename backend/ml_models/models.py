@@ -49,15 +49,41 @@ class MLModel(models.Model):
     def __str__(self):
         return f"{self.name} v{self.version} ({'Ativo' if self.is_active else 'Inativo'})"
     
+    def get_models_dir(self):
+        """Retorna o diretório absoluto para os modelos"""
+        from django.conf import settings
+        # Primeiro tenta usar o caminho configurado
+        models_dir = getattr(settings, 'ML_MODELS_DIR', None)
+        if models_dir:
+            return models_dir
+            
+        # Se não configurado, usa o diretório padrão
+        return os.path.join(settings.BASE_DIR, 'models')
+    
     def load_model(self):
         """Carrega o modelo pickle do arquivo"""
-        if self.model_file_path and os.path.exists(self.model_file_path):
-            with open(self.model_file_path, 'rb') as f:
-                return pickle.load(f)
+        try:
+            # Se o caminho é relativo, converte para absoluto
+            if self.model_file_path and not os.path.isabs(self.model_file_path):
+                models_dir = self.get_models_dir()
+                absolute_path = os.path.join(models_dir, os.path.basename(self.model_file_path))
+            else:
+                absolute_path = self.model_file_path
+
+            if absolute_path and os.path.exists(absolute_path):
+                with open(absolute_path, 'rb') as f:
+                    return pickle.load(f)
+            else:
+                print(f"Modelo não encontrado em: {absolute_path}")
+        except Exception as e:
+            print(f"Erro ao carregar modelo: {e}")
         return None
     
-    def save_model(self, model, base_path='models/'):
+    def save_model(self, model, base_path=None):
         """Salva o modelo pickle em arquivo"""
+        if base_path is None:
+            base_path = self.get_models_dir()
+            
         os.makedirs(base_path, exist_ok=True)
         filename = f"{self.model_type}_v{self.version}_{self.id}.pkl"
         filepath = os.path.join(base_path, filename)

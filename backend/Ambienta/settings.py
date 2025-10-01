@@ -12,6 +12,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = config('SECRET_KEY', default='dev-unsafe-secret-key')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# Configuração do diretório de modelos ML
+ML_MODELS_DIR = os.path.join(BASE_DIR, 'models')
+
 # --- 1. CONFIGURAÇÕES DE HOSTS E SEGURANÇA ---
 
 # LENDO APENAS UMA VARIÁVEL: Django_Allowed_Hosts
