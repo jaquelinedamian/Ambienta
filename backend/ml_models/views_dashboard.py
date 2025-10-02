@@ -232,26 +232,56 @@ def ml_dashboard(request):
 
     # Histórico de otimizações
     fan_optimization_history = []
-    for log in recent_fan_logs[:10]:  # Últimas 10 otimizações
-        temp_before = Reading.objects.filter(
-            timestamp__lte=log.timestamp
-        ).order_by('-timestamp').first()
-        
-        temp_after = Reading.objects.filter(
-            timestamp__gte=log.timestamp + timedelta(minutes=log.duration)
-        ).order_by('timestamp').first()
+    logger.info(f"Total de logs recentes: {recent_fan_logs.count()}")
+    
+    for idx, log in enumerate(recent_fan_logs[:10], 1):
+        try:
+            logger.info(f"Processando log {idx}/10 (ID: {log.id})")
+            if not log.start_time:
+                logger.warning(f"Log {log.id} sem start_time")
+                continue
+                
+            # Temperaturas antes e depois do ventilador ligado
+            temp_before = Reading.objects.filter(
+                timestamp__lte=log.start_time
+            ).order_by('-timestamp').first()
+            
+            temp_after = None
+            if log.end_time:
+                temp_after = Reading.objects.filter(
+                    timestamp__gte=log.end_time
+                ).order_by('timestamp').first()
+            elif log.duration:
+                # Se não tem end_time mas tem duration, calcula o end_time
+                temp_after = Reading.objects.filter(
+                    timestamp__gte=log.start_time + log.duration
+                ).order_by('timestamp').first()
 
-        reduction = 0
-        if temp_before and temp_after:
-            reduction = temp_before.temperature - temp_after.temperature
+            logger.debug(f"Log {log.id}: Temp antes: {temp_before.temperature if temp_before else 'N/A'}, "
+                        f"Temp depois: {temp_after.temperature if temp_after else 'N/A'}")
 
-        fan_optimization_history.append({
-            'timestamp': log.start_time,
-            'temperature': temp_before.temperature if temp_before else None,
-            'action': log.state,
-            'duration': log.duration,
-            'temperature_reduction': reduction
-        })
+            # Calcular redução de temperatura
+            reduction = 0
+            if temp_before and temp_after and temp_before.temperature > temp_after.temperature:
+                reduction = temp_before.temperature - temp_after.temperature
+                logger.debug(
+                    f"Log {log.id}: Redução de temperatura: {reduction:.1f}°C "
+                    f"(de {temp_before.temperature:.1f}°C para {temp_after.temperature:.1f}°C)"
+                )
+
+            # Criar entrada para o histórico
+            entry = {
+                'timestamp': log.start_time,
+                'temperature': temp_before.temperature if temp_before else None,
+                'duration': log.duration.total_seconds() / 60 if log.duration else None,
+                'temperature_reduction': round(reduction, 1),
+                'end_time': log.end_time
+            }
+            fan_optimization_history.append(entry)
+            
+        except Exception as e:
+            logger.error(f"Erro ao processar log {log.id}: {e}")
+            continue
     anomalies_today = anomalies.count()
     
     print("\n=== INICIALIZANDO DADOS DO VENTILADOR ===")
@@ -307,12 +337,17 @@ def ml_dashboard(request):
         **fan_data
     }
 
-    print("DEBUG - Contexto Final:", {
-        'fan_state': context['fan_state'],
-        'fan_confidence': context['fan_confidence'],
-        'energy_savings': context['energy_savings'],
-        'fan_effectiveness': context['fan_effectiveness'],
-        'history_count': len(context['fan_optimization_history'])
-    })
+    # Log detalhado do contexto final
+    logger.info("=== RESUMO DO DASHBOARD ===")
+    logger.info(f"Modelos ativos: {active_models.count() if active_models else 0}")
+    logger.info(f"Predições recentes: {len(recent_predictions)}")
+    logger.info(f"Predições 24h: {predictions_24h}")
+    logger.info(f"Anomalias hoje: {anomalies_today}")
+    logger.info(f"Estado do ventilador: {'LIGADO' if fan_state else 'DESLIGADO'}")
+    logger.info(f"Confiança ML: {fan_confidence}%")
+    logger.info(f"Economia de energia: {fan_data['energy_savings']:.1f}%")
+    logger.info(f"Efetividade: {fan_data['fan_effectiveness']:.1f}%")
+    logger.info(f"Histórico de otimizações: {len(fan_optimization_history)} registros")
+    logger.info("==========================")
     
     return render(request, 'dashboard/ml_dashboard.html', context)
