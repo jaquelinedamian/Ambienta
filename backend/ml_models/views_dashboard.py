@@ -200,13 +200,27 @@ def ml_dashboard(request):
         temperature_reductions = []
         for log in recent_fan_logs:
             # Pegar temperatura antes e depois
-            temp_before = Reading.objects.filter(
-                timestamp__lte=log.start_time
-            ).order_by('-timestamp').first()
-            
-            temp_after = Reading.objects.filter(
-                timestamp__gte=log.end_time
-            ).order_by('timestamp').first()
+            try:
+                # Processa apenas logs com timestamps válidos
+                if log.start_time:
+                    temp_before = Reading.objects.filter(
+                        timestamp__lte=log.start_time
+                    ).order_by('-timestamp').first()
+                else:
+                    print(f"Log {log.id} não tem start_time definido")
+                    continue
+
+                if log.end_time:
+                    temp_after = Reading.objects.filter(
+                        timestamp__gte=log.end_time
+                    ).order_by('timestamp').first()
+                else:
+                    print(f"Log {log.id} não tem end_time definido")
+                    continue
+
+            except Exception as e:
+                print(f"Erro ao buscar leituras para log {log.id}: {e}")
+                continue
 
             if temp_before and temp_after:
                 reduction = temp_before.temperature - temp_after.temperature

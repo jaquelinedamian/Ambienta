@@ -95,9 +95,9 @@ class MLIntegrationService:
                 # Salvar predição
                 MLPrediction.objects.create(
                     model=ml_model,
-                    input_data={'temperature': temperature, 'hour': hour},
+                    input_data={'temperature': float(temperature), 'hour': int(hour) if hour is not None else None},
                     prediction=result,
-                    confidence=result.get('confidence', 0)
+                    confidence=float(result.get('confidence', 0))
                 )
                 
                 return result
