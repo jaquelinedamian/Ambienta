@@ -3,6 +3,7 @@
 from django.urls import path
 from . import views
 from . import views_dashboard
+from . import api
 from django.views.decorators.csrf import csrf_exempt
 
 app_name = 'ml_models'
@@ -18,5 +19,7 @@ urlpatterns = [
     path('api/detect/anomaly/', views.AnomalyDetectionAPIView.as_view(), name='anomaly_detection'),
     path('api/models/status/', views.ModelStatusAPIView.as_view(), name='model_status'),
     path('api/models/<int:model_id>/metrics/', views.ModelMetricsAPIView.as_view(), name='model_metrics'),
-    path('api/dashboard/data/', views.dashboard_data, name='dashboard_data'),
+    
+    # API para dados do dashboard
+    path('api/dashboard/data/', csrf_exempt(api.dashboard_data), name='dashboard_data'),
 ]

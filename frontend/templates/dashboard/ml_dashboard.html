@@ -333,6 +333,17 @@ document.addEventListener('DOMContentLoaded', function() {
         Você precisa estar <a href="{% url 'accounts:login' %}" class="alert-link">logado</a> para treinar modelos ou atualizar estatísticas.
     </div>
     {% endif %}
+    
+    {% if debug_info %}
+    <div class="alert alert-info mb-4 debug-info" style="display: none;">
+        <h6><i class="fas fa-bug me-2"></i>Informações de Debug</h6>
+        <ul class="mb-0">
+            <li>Modelos ativos: {{ debug_info.active_models_count }}</li>
+            <li>Predições recentes: {{ debug_info.recent_predictions_count }}</li>
+            <li>Anomalias: {{ debug_info.anomalies_count }}</li>
+        </ul>
+    </div>
+    {% endif %}
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">
             <i class="fas fa-brain me-2"></i>
@@ -347,10 +358,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-cog me-1"></i>
                 Treinar Modelos
             </button>
-            <button type="button" class="btn btn-outline-secondary" id="refreshStatsBtn" {% if not user.is_authenticated %}disabled{% endif %}>
+            <button type="button" class="btn btn-outline-secondary me-2" id="refreshStatsBtn" {% if not user.is_authenticated %}disabled{% endif %}>
                 <i class="fas fa-sync-alt me-1"></i>
                 Atualizar
             </button>
+            <button type="button" class="btn btn-outline-info" id="toggleDebugBtn">
+                <i class="fas fa-bug me-1"></i>
+                Debug Info
+            </button>
+            
+            <script>
+                document.getElementById('toggleDebugBtn').addEventListener('click', function() {
+                    const debugInfo = document.querySelector('.debug-info');
+                    if (debugInfo) {
+                        debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
+                    }
+                });
+            </script>
         </div>
     </div>
 

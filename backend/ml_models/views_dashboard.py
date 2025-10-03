@@ -335,6 +335,21 @@ def ml_dashboard(request):
             fan_data[key] = default_fan_data[key]
     
     # Montar contexto completo
+    # Garantir que todos os modelos ativos sejam carregados
+    for model in active_models:
+        if not model.is_active:
+            continue
+        try:
+            model_instance = model.load_model()
+            if not model_instance:
+                logger.warning(f"Não foi possível carregar o modelo {model.name}")
+                model.is_active = False
+                model.save(update_fields=['is_active'])
+        except Exception as e:
+            logger.error(f"Erro ao carregar modelo {model.name}: {e}")
+            model.is_active = False
+            model.save(update_fields=['is_active'])
+
     context = {
         # Dados base
         'active_models': active_models or [],
@@ -346,7 +361,14 @@ def ml_dashboard(request):
         'recent_training': recent_training or [],
         
         # Dados do ventilador
-        **fan_data
+        **fan_data,
+        
+        # Debug info
+        'debug_info': {
+            'active_models_count': active_models.count() if active_models else 0,
+            'recent_predictions_count': len(recent_predictions) if recent_predictions else 0,
+            'anomalies_count': len(anomaly_predictions) if anomaly_predictions else 0
+        }
     }
 
     # Log detalhado do contexto final
