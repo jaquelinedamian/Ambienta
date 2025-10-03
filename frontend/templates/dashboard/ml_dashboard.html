@@ -42,17 +42,47 @@
 
 {% block extra_js %}
 <script>
-    // Inicializar o botão de debug assim que o DOM estiver pronto
+    // Função para alternar a visibilidade do painel de debug
+    function toggleDebugPanel() {
+        const debugInfo = document.querySelector('.debug-info');
+        if (debugInfo) {
+            const isHidden = debugInfo.style.display === 'none';
+            debugInfo.style.display = isHidden ? 'block' : 'none';
+            
+            // Salvar preferência do usuário
+            localStorage.setItem('debugPanelVisible', isHidden);
+            
+            // Atualizar classe do botão
+            const debugBtn = document.getElementById('toggleDebugBtn');
+            if (debugBtn) {
+                debugBtn.classList.toggle('btn-warning', isHidden);
+                debugBtn.classList.toggle('btn-secondary', !isHidden);
+            }
+        }
+    }
+
+    // Configurar o botão de debug quando o DOM estiver pronto
     document.addEventListener('DOMContentLoaded', function() {
         const debugBtn = document.getElementById('toggleDebugBtn');
         const debugInfo = document.querySelector('.debug-info');
         
         if (debugBtn && debugInfo) {
-            // Mostrar debug info por padrão em desenvolvimento
-            debugInfo.style.display = 'block';
+            // Restaurar estado anterior do painel
+            const wasVisible = localStorage.getItem('debugPanelVisible') === 'true';
+            debugInfo.style.display = wasVisible ? 'block' : 'none';
             
-            debugBtn.addEventListener('click', function() {
-                debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
+            // Configurar classe do botão
+            debugBtn.classList.toggle('btn-warning', !wasVisible);
+            debugBtn.classList.toggle('btn-secondary', wasVisible);
+            
+            // Adicionar evento de clique
+            debugBtn.onclick = toggleDebugPanel;
+            
+            // Atualizar informações iniciais
+            updateDebugInfo({
+                active_models: [],
+                recent_predictions: [],
+                anomaly_predictions: []
             });
         }
     });
@@ -390,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-sync-alt me-1"></i>
                 Atualizar
             </button>
-            <button type="button" class="btn btn-outline-info" id="toggleDebugBtn">
+            <button type="button" class="btn btn-warning" id="toggleDebugBtn">
                 <i class="fas fa-bug me-1"></i>
                 Debug Info
             </button>

@@ -16,9 +16,9 @@ def dashboard_data(request):
     try:
         # Buscar modelos ativos com últimas predições
         active_models = MLModel.objects.filter(is_active=True).prefetch_related(
-            'mlprediction_set'
+            'predictions'
         ).annotate(
-            last_prediction_time=Max('mlprediction__created_at')
+            last_prediction_time=Max('predictions__created_at')
         ).order_by('-last_prediction_time')
         
         # Últimas predições
