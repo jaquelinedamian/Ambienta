@@ -99,7 +99,7 @@ class TemperaturePredictionModel:
         
         return df
     
-    def train(self, days_back=30, test_size=0.2):
+    def train(self, days_back=30, test_size=0.2, training_session=None):
         """
         Treina o modelo de predição de temperatura
         """
@@ -114,6 +114,11 @@ class TemperaturePredictionModel:
         
         if len(df) < 10:
             raise ValueError("Dados insuficientes após limpeza (mínimo 10 amostras)")
+            
+        # Atualizar número de amostras na sessão de treinamento
+        if training_session:
+            training_session.training_samples = len(df)
+            training_session.save()
         
         # Separar features e target
         X = df[self.feature_columns]
@@ -252,7 +257,7 @@ class FanOptimizationModel:
         
         return pd.DataFrame(data)
     
-    def train(self, days_back=30):
+    def train(self, days_back=30, training_session=None):
         """
         Treina modelo de otimização do ventilador
         """
@@ -279,8 +284,14 @@ class FanOptimizationModel:
         metrics = {
             'mse': float(mean_squared_error(y, y_pred)),
             'mae': float(mean_absolute_error(y, y_pred)),
-            'r2': float(r2_score(y, y_pred))
+            'r2': float(r2_score(y, y_pred)),
+            'training_samples': int(len(X))
         }
+        
+        # Atualizar número de amostras na sessão de treinamento
+        if training_session:
+            training_session.training_samples = len(X)
+            training_session.save()
         
         return metrics
     
@@ -350,7 +361,7 @@ class AnomalyDetectionModel:
         
         return df.dropna()
     
-    def train(self, days_back=30):
+    def train(self, days_back=30, training_session=None):
         """
         Treina modelo de detecção de anomalias
         """
@@ -369,6 +380,11 @@ class AnomalyDetectionModel:
         # Avaliar em dados de treinamento
         predictions = self.model.predict(X_scaled)
         anomaly_ratio = (predictions == -1).sum() / len(predictions)
+        
+        # Atualizar número de amostras na sessão de treinamento
+        if training_session:
+            training_session.training_samples = len(X)
+            training_session.save()
         
         return {
             'anomaly_ratio': float(anomaly_ratio),
@@ -403,11 +419,12 @@ class AnomalyDetectionModel:
         }
 
 
-def train_all_models():
+def train_all_models(training_session=None):
     """
     Treina todos os modelos de ML disponíveis
     """
     results = {}
+    total_samples = 0
     
     try:
         # Modelo de predição de temperatura

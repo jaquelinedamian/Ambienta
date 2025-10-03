@@ -69,12 +69,19 @@ class TrainModelsAPIView(APIView):
                 raise ValueError(f"Dados insuficientes para treinamento. Encontrados apenas {readings_count} registros nos últimos 30 dias.")
             
             # Treinar modelos
-            results = train_all_models()
+            results = train_all_models(training_session=training_session)
             
             # Atualizar sessão
             training_session.status = 'completed'
             training_session.completed_at = timezone.now()
             training_session.training_metrics.update(results)
+            
+            # Garantir que temos o número de amostras
+            if training_session.training_samples == 0 and 'temperature_prediction' in results:
+                # Use as amostras do modelo de temperatura como referência
+                if 'training_samples' in results['temperature_prediction']:
+                    training_session.training_samples = results['temperature_prediction']['training_samples']
+            
             training_session.save()
             
             return Response({
