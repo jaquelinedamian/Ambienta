@@ -4,7 +4,10 @@ from django.db import models
 from django.utils import timezone
 import pickle
 import os
+import logging
 from datetime import timedelta
+
+logger = logging.getLogger(__name__)
 
 
 class MLModel(models.Model):
@@ -62,22 +65,39 @@ class MLModel(models.Model):
     
     def load_model(self):
         """Carrega o modelo pickle do arquivo"""
+        if not self.model_file_path:
+            logger.error(f"Caminho do modelo não definido para {self.name}")
+            return None
+
         try:
             # Se o caminho é relativo, converte para absoluto
-            if self.model_file_path and not os.path.isabs(self.model_file_path):
+            if not os.path.isabs(self.model_file_path):
                 models_dir = self.get_models_dir()
                 absolute_path = os.path.join(models_dir, os.path.basename(self.model_file_path))
             else:
                 absolute_path = self.model_file_path
 
-            if absolute_path and os.path.exists(absolute_path):
+            if not os.path.exists(absolute_path):
+                logger.error(f"Arquivo do modelo não encontrado: {absolute_path}")
+                # Desativar modelo se arquivo não existe
+                self.is_active = False
+                self.save(update_fields=['is_active'])
+                return None
+
+            try:
                 with open(absolute_path, 'rb') as f:
-                    return pickle.load(f)
-            else:
-                print(f"Modelo não encontrado em: {absolute_path}")
+                    model = pickle.load(f)
+                logger.info(f"Modelo {self.name} carregado com sucesso de {absolute_path}")
+                return model
+            except (pickle.UnpicklingError, EOFError) as e:
+                logger.error(f"Erro ao desserializar modelo {self.name}: {e}")
+                self.is_active = False
+                self.save(update_fields=['is_active'])
+                return None
+
         except Exception as e:
-            print(f"Erro ao carregar modelo: {e}")
-        return None
+            logger.error(f"Erro inesperado ao carregar modelo {self.name}: {e}")
+            return None
     
     def save_model(self, model, base_path=None):
         """Salva o modelo pickle em arquivo"""

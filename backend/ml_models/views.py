@@ -2,7 +2,11 @@
 
 from rest_framework import status
 from rest_framework.response import Response
+# backend/ml_models/views.py
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .api import dashboard_data
 from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt

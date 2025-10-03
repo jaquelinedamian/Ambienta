@@ -5,7 +5,7 @@ from datetime import timedelta
 import json
 from .models import MLModel, MLPrediction, TrainingSession
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q, Avg, F, ExpressionWrapper, FloatField
+from django.db.models import Count, Q, Avg, F, ExpressionWrapper, FloatField, Max
 from sensors.models import FanState, FanLog, Reading
 from django.conf import settings
 from functools import wraps
@@ -53,8 +53,13 @@ def ml_dashboard(request):
     print(f"DEBUG - URL acessada: {request.path}")
 
     try:
-        # Buscar modelos ativos
-        active_models = MLModel.objects.filter(is_active=True)
+        # Buscar modelos ativos e suas últimas predições
+        active_models = MLModel.objects.filter(is_active=True).prefetch_related(
+            'mlprediction_set'  # Prefetch related predictions
+        ).annotate(
+            last_prediction_time=models.Max('mlprediction__created_at')
+        ).order_by('-last_prediction_time')
+        
         if not active_models.exists():
             logger.warning("Nenhum modelo ML ativo encontrado")
     except Exception as e:
@@ -64,6 +69,9 @@ def ml_dashboard(request):
     try:
         # Buscar últimas predições com seus modelos relacionados
         recent_predictions = MLPrediction.objects.select_related('model').order_by('-created_at')[:10]
+        
+        # Forçar avaliação do queryset para detectar erros imediatamente
+        recent_predictions = list(recent_predictions)
     except Exception as e:
         logger.error(f"Erro ao buscar predições recentes: {e}")
         recent_predictions = MLPrediction.objects.none()
@@ -114,15 +122,16 @@ def ml_dashboard(request):
         created_at__gte=last_24h
     ).select_related('model').order_by('-created_at')
     
-    # Anomalias detectadas hoje
-    today = timezone.now().date()
+    # Anomalias detectadas nas últimas 24 horas
+    last_24h = timezone.now() - timedelta(hours=24)
     anomaly_predictions = MLPrediction.objects.filter(
         model__model_type='anomaly_detection',
-        created_at__date=today
+        created_at__gte=last_24h
     ).select_related('model').order_by('-created_at')
 
-    # Separar anomalias confirmadas
-    anomalies = anomaly_predictions.filter(prediction__is_anomaly=True)
+    # Separar anomalias confirmadas e garantir que prediction é um dict
+    anomalies = anomaly_predictions.exclude(prediction__isnull=True)
+    anomalies = [pred for pred in anomalies if isinstance(pred.prediction, dict) and pred.prediction.get('is_anomaly', False)]
     
     # Histórico de treinamento recente
     recent_training = TrainingSession.objects.all().order_by('-started_at')[:5]
@@ -225,10 +234,13 @@ def ml_dashboard(request):
             if temp_before and temp_after:
                 reduction = temp_before.temperature - temp_after.temperature
                 if reduction > 0:  # Só considerar quando houve redução
-                    temperature_reductions.append(reduction)
+                    # Calculate reduction as percentage of initial temperature
+                    reduction_percentage = (reduction / temp_before.temperature) * 100
+                    temperature_reductions.append(reduction_percentage)
 
         if temperature_reductions:
-            fan_effectiveness = (sum(temperature_reductions) / len(temperature_reductions)) * 100
+            # Average of percentage reductions
+            fan_effectiveness = sum(temperature_reductions) / len(temperature_reductions)
 
     # Histórico de otimizações
     fan_optimization_history = []

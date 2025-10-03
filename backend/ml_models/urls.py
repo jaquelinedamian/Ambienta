@@ -18,4 +18,5 @@ urlpatterns = [
     path('api/detect/anomaly/', views.AnomalyDetectionAPIView.as_view(), name='anomaly_detection'),
     path('api/models/status/', views.ModelStatusAPIView.as_view(), name='model_status'),
     path('api/models/<int:model_id>/metrics/', views.ModelMetricsAPIView.as_view(), name='model_metrics'),
+    path('api/dashboard/data/', views.dashboard_data, name='dashboard_data'),
 ]

@@ -40,6 +40,289 @@
 </style>
 {% endblock extra_css %}
 
+{% block extra_js %}
+<script>
+    const REFRESH_INTERVAL = 30000; // 30 segundos
+
+    function updateDashboard() {
+        fetch('{% url "ml_models:dashboard_data" %}', {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Erro ao atualizar dashboard:', data.error);
+                return;
+            }
+            
+            // Atualizar modelos ativos
+            updateActiveModels(data.active_models);
+            
+            // Atualizar predições recentes
+            updateRecentPredictions(data.recent_predictions);
+            
+            // Atualizar anomalias
+            updateAnomalies(data.anomaly_predictions);
+            
+            // Atualizar estado do ventilador
+            updateFanState(data.fan_state);
+        })
+        .catch(error => {
+            console.error('Erro ao buscar dados:', error);
+        });
+    }
+
+    // Iniciar atualizações automáticas
+    setInterval(updateDashboard, REFRESH_INTERVAL);
+
+    // Atualizar imediatamente quando o botão de refresh é clicado
+    document.getElementById('refreshStatsBtn').addEventListener('click', updateDashboard);
+
+    function updateActiveModels(models) {
+        const container = document.querySelector('#activeModelsContainer');
+        if (!container) return;
+
+        models.forEach(model => {
+            const card = container.querySelector(`[data-model-id="${model.id}"]`);
+            if (card) {
+                // Atualizar métricas
+                card.querySelector('.model-accuracy').textContent = `${(model.accuracy * 100).toFixed(1)}%`;
+                card.querySelector('.model-mse').textContent = model.mse.toFixed(3);
+                card.querySelector('.model-mae').textContent = model.mae.toFixed(3);
+                card.querySelector('.model-r2').textContent = model.r2_score.toFixed(3);
+            }
+        });
+    }
+
+    function updateRecentPredictions(predictions) {
+        const container = document.querySelector('#recentPredictionsContainer');
+        if (!container) return;
+
+        const predictionsList = container.querySelector('.list-group');
+        if (!predictionsList) return;
+
+        predictions.forEach((prediction, index) => {
+            const predictionItem = predictionsList.children[index];
+            if (predictionItem) {
+                // Atualizar conteúdo baseado no tipo de modelo
+                if (prediction.model_type === 'temperature_prediction') {
+                    const temps = prediction.prediction.temperatures || [];
+                    predictionItem.querySelector('.prediction-value').textContent = 
+                        `${temps.map(t => t.toFixed(1)).join('°C, ')}°C`;
+                } else if (prediction.model_type === 'fan_optimization') {
+                    const action = prediction.prediction.should_turn_on ? 'Ligar' : 'Manter desligado';
+                    predictionItem.querySelector('.prediction-value').textContent = action;
+                }
+                
+                // Atualizar confiança
+                const confidenceBar = predictionItem.querySelector('.progress-bar');
+                if (confidenceBar) {
+                    confidenceBar.style.width = `${prediction.confidence * 100}%`;
+                }
+            }
+        });
+    }
+
+    function updateAnomalies(anomalies) {
+        const container = document.querySelector('#anomaliesContainer');
+        if (!container) return;
+
+        const anomaliesList = container.querySelector('.list-group');
+        if (!anomaliesList) return;
+
+        // Atualizar contador
+        const counter = document.querySelector('#anomaliesCounter');
+        if (counter) {
+            const confirmedAnomalies = anomalies.filter(a => a.prediction.is_anomaly);
+            counter.textContent = confirmedAnomalies.length;
+        }
+
+        // Atualizar lista de anomalias
+        anomalies.forEach((anomaly, index) => {
+            const anomalyItem = anomaliesList.children[index];
+            if (anomalyItem && anomaly.prediction.is_anomaly) {
+                anomalyItem.querySelector('.anomaly-score').textContent = 
+                    `${(anomaly.prediction.anomaly_score * 100).toFixed(1)}%`;
+                anomalyItem.querySelector('.anomaly-time').textContent = 
+                    new Date(anomaly.created_at).toLocaleTimeString();
+            }
+        });
+    }
+
+    function updateFanState(isOn) {
+        const fanIcon = document.querySelector('#fanStateIcon');
+        if (fanIcon) {
+            fanIcon.classList.remove('text-success', 'text-secondary');
+            fanIcon.classList.add(isOn ? 'text-success' : 'text-secondary');
+        }
+
+        const fanStatus = document.querySelector('#fanStatus');
+        if (fanStatus) {
+            fanStatus.textContent = isOn ? 'Ligado' : 'Desligado';
+        }
+    }
+
+    // Função para mostrar mensagens de alerta
+function showMessage(message, isError = false) {
+    console.log('showMessage chamada:', { message, isError });
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${isError ? 'danger' : 'success'} alert-dismissible fade show`;
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    const alertContainer = document.getElementById('alertContainer');
+    console.log('Alert container encontrado:', !!alertContainer);
+    if (alertContainer) {
+        alertContainer.appendChild(alertDiv);
+    } else {
+        document.querySelector('main').insertBefore(alertDiv, document.querySelector('main').firstChild);
+    }
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Função para disparar o treinamento dos modelos
+function triggerTraining() {
+    console.log('triggerTraining iniciada');
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    console.log('Modal carregado:', !!loadingModal);
+    loadingModal.show();
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    console.log('CSRF token encontrado:', !!csrfToken, csrfToken?.value);
+    
+    fetch('{% url "ml_models:train_models" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken?.value,
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        loadingModal.hide();
+        console.log('Resposta do servidor:', data); // Para debug
+        
+        if (!data.error) {
+            showMessage(data.message || 'Treinamento concluído com sucesso!');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            let errorMessage = data.message;
+            if (data.details?.description) {
+                errorMessage += '\nDetalhes: ' + data.details.description;
+            }
+            showMessage(errorMessage, true);
+            
+            // Log detalhado no console para debug
+            if (data.details) {
+                console.log('Detalhes do erro:', data.details);
+            }
+        }
+    })
+    .catch(error => {
+        loadingModal.hide();
+        showMessage(`Erro na comunicação com o servidor: ${error.message}`, true);
+        console.error('Erro na requisição:', error);
+    });
+}
+
+// Função para atualizar estatísticas
+function refreshStats() {
+    console.log('Função refreshStats chamada');
+    const btn = document.querySelector('#refreshStatsBtn');
+    console.log('Botão encontrado:', btn);
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Atualizando...';
+    btn.disabled = true;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    console.log('CSRF Token:', csrfToken);
+
+    fetch('{% url "ml_models:model_status" %}', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        showMessage('Estatísticas atualizadas com sucesso!');
+        setTimeout(() => location.reload(), 1000);
+    })
+    .catch(error => {
+        showMessage(`Erro ao atualizar estatísticas: ${error.message}`, true);
+        console.error('Erro:', error);
+    })
+    .finally(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    });
+}
+
+// Inicialização quando o documento estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard ML scripts carregados');
+    
+    // Configurar os event listeners
+    const trainBtn = document.getElementById('trainModelBtn');
+    const refreshBtn = document.getElementById('refreshStatsBtn');
+    
+    console.log('Botões encontrados:', {
+        trainBtn: !!trainBtn,
+        refreshBtn: !!refreshBtn,
+        trainBtnDisabled: trainBtn?.disabled,
+        refreshBtnDisabled: refreshBtn?.disabled
+    });
+    
+    if (trainBtn) {
+        trainBtn.addEventListener('click', function(e) {
+            console.log('Botão de treinamento clicado');
+            e.preventDefault();
+            triggerTraining();
+        });
+        console.log('Event listener adicionado ao botão de treinamento');
+    } else {
+        console.error('Botão de treinamento não encontrado');
+    }
+    
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function(e) {
+            console.log('Botão de atualização clicado');
+            e.preventDefault();
+            refreshStats();
+        });
+        console.log('Event listener adicionado ao botão de atualização');
+    } else {
+        console.error('Botão de atualização não encontrado');
+    }
+    
+    // Verificar CSRF token e Modal
+    console.log('CSRF token presente:', !!document.querySelector('[name=csrfmiddlewaretoken]'));
+    console.log('Modal presente:', !!document.getElementById('loadingModal'));
+});
+</script>
+{% endblock extra_js %}
+
 {% block content %}
 {% csrf_token %}
 <main class="container-fluid">
@@ -644,163 +927,3 @@
     </div>
 </div>
 {% endblock content %}
-
-{% block extra_js %}
-<script>
-// Função para mostrar mensagens de alerta
-function showMessage(message, isError = false) {
-    console.log('showMessage chamada:', { message, isError });
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${isError ? 'danger' : 'success'} alert-dismissible fade show`;
-    alertDiv.setAttribute('role', 'alert');
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-    const alertContainer = document.getElementById('alertContainer');
-    console.log('Alert container encontrado:', !!alertContainer);
-    if (alertContainer) {
-        alertContainer.appendChild(alertDiv);
-    } else {
-        document.querySelector('main').insertBefore(alertDiv, document.querySelector('main').firstChild);
-    }
-    
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 5000);
-}
-
-// Função para disparar o treinamento dos modelos
-function triggerTraining() {
-    console.log('triggerTraining iniciada');
-    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
-    console.log('Modal carregado:', !!loadingModal);
-    loadingModal.show();
-    
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
-    console.log('CSRF token encontrado:', !!csrfToken, csrfToken?.value);
-    
-    fetch('{% url "ml_models:train_models" %}', {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': csrfToken?.value,
-            'Content-Type': 'application/json',
-        },
-        credentials: 'same-origin'
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        loadingModal.hide();
-        console.log('Resposta do servidor:', data); // Para debug
-        
-        if (!data.error) {
-            showMessage(data.message || 'Treinamento concluído com sucesso!');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            let errorMessage = data.message;
-            if (data.details?.description) {
-                errorMessage += '\nDetalhes: ' + data.details.description;
-            }
-            showMessage(errorMessage, true);
-            
-            // Log detalhado no console para debug
-            if (data.details) {
-                console.log('Detalhes do erro:', data.details);
-            }
-        }
-    })
-    .catch(error => {
-        loadingModal.hide();
-        showMessage(`Erro na comunicação com o servidor: ${error.message}`, true);
-        console.error('Erro na requisição:', error);
-    });
-}
-
-// Função para atualizar estatísticas
-function refreshStats() {
-    console.log('Função refreshStats chamada');
-    const btn = document.querySelector('#refreshStatsBtn');
-    console.log('Botão encontrado:', btn);
-    const originalContent = btn.innerHTML;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Atualizando...';
-    btn.disabled = true;
-
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-    console.log('CSRF Token:', csrfToken);
-
-    fetch('{% url "ml_models:model_status" %}', {
-        method: 'GET',
-        headers: {
-            'X-CSRFToken': csrfToken,
-            'Content-Type': 'application/json',
-        },
-        credentials: 'same-origin'
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        showMessage('Estatísticas atualizadas com sucesso!');
-        setTimeout(() => location.reload(), 1000);
-    })
-    .catch(error => {
-        showMessage(`Erro ao atualizar estatísticas: ${error.message}`, true);
-        console.error('Erro:', error);
-    })
-    .finally(() => {
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
-    });
-}
-
-// Inicialização quando o documento estiver pronto
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Dashboard ML scripts carregados');
-    
-    // Configurar os event listeners
-    const trainBtn = document.getElementById('trainModelBtn');
-    const refreshBtn = document.getElementById('refreshStatsBtn');
-    
-    console.log('Botões encontrados:', {
-        trainBtn: !!trainBtn,
-        refreshBtn: !!refreshBtn,
-        trainBtnDisabled: trainBtn?.disabled,
-        refreshBtnDisabled: refreshBtn?.disabled
-    });
-    
-    if (trainBtn) {
-        trainBtn.addEventListener('click', function(e) {
-            console.log('Botão de treinamento clicado');
-            e.preventDefault();
-            triggerTraining();
-        });
-        console.log('Event listener adicionado ao botão de treinamento');
-    } else {
-        console.error('Botão de treinamento não encontrado');
-    }
-    
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', function(e) {
-            console.log('Botão de atualização clicado');
-            e.preventDefault();
-            refreshStats();
-        });
-        console.log('Event listener adicionado ao botão de atualização');
-    } else {
-        console.error('Botão de atualização não encontrado');
-    }
-    
-    // Verificar CSRF token e Modal
-    console.log('CSRF token presente:', !!document.querySelector('[name=csrfmiddlewaretoken]'));
-    console.log('Modal presente:', !!document.getElementById('loadingModal'));
-});
-</script>
-{% endblock extra_js %}
