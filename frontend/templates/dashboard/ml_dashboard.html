@@ -42,7 +42,30 @@
 
 {% block extra_js %}
 <script>
+    // Inicializar o botão de debug assim que o DOM estiver pronto
+    document.addEventListener('DOMContentLoaded', function() {
+        const debugBtn = document.getElementById('toggleDebugBtn');
+        const debugInfo = document.querySelector('.debug-info');
+        
+        if (debugBtn && debugInfo) {
+            // Mostrar debug info por padrão em desenvolvimento
+            debugInfo.style.display = 'block';
+            
+            debugBtn.addEventListener('click', function() {
+                debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
+            });
+        }
+    });
+
     const REFRESH_INTERVAL = 30000; // 30 segundos
+
+    function updateDebugInfo(data) {
+        // Atualizar contadores de debug
+        document.getElementById('debugActiveModels').textContent = data.active_models ? data.active_models.length : '0';
+        document.getElementById('debugPredictions').textContent = data.recent_predictions ? data.recent_predictions.length : '0';
+        document.getElementById('debugAnomalies').textContent = data.anomaly_predictions ? data.anomaly_predictions.length : '0';
+        document.getElementById('debugLastUpdate').textContent = new Date().toLocaleTimeString();
+    }
 
     function updateDashboard() {
         fetch('{% url "ml_models:dashboard_data" %}', {
@@ -50,6 +73,7 @@
             headers: {
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
             },
+            credentials: 'same-origin'
         })
         .then(response => response.json())
         .then(data => {
@@ -69,9 +93,14 @@
             
             // Atualizar estado do ventilador
             updateFanState(data.fan_state);
+            
+            // Atualizar informações de debug
+            updateDebugInfo(data);
         })
         .catch(error => {
             console.error('Erro ao buscar dados:', error);
+            // Mostrar erro no painel de debug
+            document.getElementById('debugLastUpdate').textContent = 'Erro: ' + error.message;
         });
     }
 
@@ -334,16 +363,15 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     {% endif %}
     
-    {% if debug_info %}
     <div class="alert alert-info mb-4 debug-info" style="display: none;">
         <h6><i class="fas fa-bug me-2"></i>Informações de Debug</h6>
         <ul class="mb-0">
-            <li>Modelos ativos: {{ debug_info.active_models_count }}</li>
-            <li>Predições recentes: {{ debug_info.recent_predictions_count }}</li>
-            <li>Anomalias: {{ debug_info.anomalies_count }}</li>
+            <li>Modelos ativos: <span id="debugActiveModels">{{ debug_info.active_models_count|default:"0" }}</span></li>
+            <li>Predições recentes: <span id="debugPredictions">{{ debug_info.recent_predictions_count|default:"0" }}</span></li>
+            <li>Anomalias: <span id="debugAnomalies">{{ debug_info.anomalies_count|default:"0" }}</span></li>
+            <li>Última atualização: <span id="debugLastUpdate">-</span></li>
         </ul>
     </div>
-    {% endif %}
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">
             <i class="fas fa-brain me-2"></i>
@@ -366,15 +394,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-bug me-1"></i>
                 Debug Info
             </button>
-            
-            <script>
-                document.getElementById('toggleDebugBtn').addEventListener('click', function() {
-                    const debugInfo = document.querySelector('.debug-info');
-                    if (debugInfo) {
-                        debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
-                    }
-                });
-            </script>
         </div>
     </div>
 
