@@ -62,6 +62,7 @@ class TemperaturePredictionModel:
         """
         end_date = timezone.now()
         start_date = end_date - timedelta(days=days_back)
+        print(f"\nTemperaturePredictionModel - Buscando dados de {start_date} até {end_date}")
         
         # Buscar dados de temperatura
         readings = Reading.objects.filter(
@@ -71,6 +72,9 @@ class TemperaturePredictionModel:
         
         if not readings.exists():
             raise ValueError("Não há dados suficientes para treinamento")
+            
+        readings_count = readings.count()
+        print(f"TemperaturePredictionModel - Encontradas {readings_count} leituras de temperatura")
         
         # Converter para DataFrame
         df = pd.DataFrame(list(readings.values()))
@@ -83,19 +87,30 @@ class TemperaturePredictionModel:
         ).order_by('timestamp')
         
         if fan_states.exists():
+            fan_states_count = fan_states.count()
+            print(f"TemperaturePredictionModel - Encontrados {fan_states_count} estados do ventilador")
+            
             fan_df = pd.DataFrame(list(fan_states.values()))
             fan_df['timestamp'] = pd.to_datetime(fan_df['timestamp'])
             
-            # Merge com interpolação
+            # Merge com interpolação e tolerância de 5 minutos
             df = pd.merge_asof(
                 df.sort_values('timestamp'),
                 fan_df[['timestamp', 'state']].sort_values('timestamp'),
                 on='timestamp',
-                direction='backward'
+                direction='nearest',  # Pega o estado mais próximo
+                tolerance=pd.Timedelta('5min')  # Máximo 5 minutos de diferença
             )
-            df['fan_state'] = df['state'].fillna(0).astype(int)
+            
+            # Se ainda houver NaN após o merge, preenche com estado anterior ou 0
+            df['state'] = df['state'].fillna(method='ffill').fillna(0)
+            df['fan_state'] = df['state'].astype(int)
         else:
             df['fan_state'] = 0
+            
+        # Remove linhas onde não temos estado do ventilador após muito tempo sem leitura
+        if len(df) > 0:
+            print(f"Total de amostras antes da limpeza: {len(df)}")
         
         return df
     
@@ -209,12 +224,16 @@ class FanOptimizationModel:
         """
         end_date = timezone.now()
         start_date = end_date - timedelta(days=days_back)
+        print(f"\nFanOptimizationModel - Buscando dados de {start_date} até {end_date}")
         
         # Buscar estados do ventilador
         fan_states = FanState.objects.filter(
             timestamp__gte=start_date,
             timestamp__lte=end_date
         ).order_by('timestamp')
+        
+        fan_states_count = fan_states.count()
+        print(f"FanOptimizationModel - Encontrados {fan_states_count} estados do ventilador")
         
         data = []
         for i in range(len(fan_states) - 1):
@@ -236,15 +255,16 @@ class FanOptimizationModel:
                 ).order_by('timestamp').first()
                 
                 # Pegar temperaturas durante o ciclo
-                temps_during = Reading.objects.filter(
+                temps_during = list(Reading.objects.filter(
                     timestamp__gt=current_state.timestamp,
                     timestamp__lt=next_state.timestamp
-                ).values_list('temperature', flat=True)
+                ).values_list('temperature', flat=True))
                 
-                if temp_before and temp_after and temps_during:
-                    temp_during_avg = sum(temps_during) / len(temps_during) if temps_during else None
+                if temp_before and temp_after and temps_during:  # Agora temps_during é uma lista
+                    temp_during_avg = sum(temps_during) / len(temps_during)
                     
-                    if temp_during_avg:
+                    # Só adiciona se tiver pelo menos 3 leituras durante o ciclo
+                    if len(temps_during) >= 3:
                         data.append({
                             'temp_before': temp_before.temperature,
                             'temp_during': temp_during_avg,
@@ -341,6 +361,7 @@ class AnomalyDetectionModel:
         """
         end_date = timezone.now()
         start_date = end_date - timedelta(days=days_back)
+        print(f"\nAnomalyDetectionModel - Buscando dados de {start_date} até {end_date}")
         
         readings = Reading.objects.filter(
             timestamp__gte=start_date,
@@ -350,6 +371,9 @@ class AnomalyDetectionModel:
         df = pd.DataFrame(list(readings.values()))
         if df.empty:
             raise ValueError("Não há dados para treinamento de anomalias")
+            
+        readings_count = len(df)
+        print(f"AnomalyDetectionModel - Encontradas {readings_count} leituras de temperatura")
         
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         
@@ -429,7 +453,7 @@ def train_all_models(training_session=None):
     try:
         # Modelo de predição de temperatura
         temp_model = TemperaturePredictionModel()
-        temp_metrics = temp_model.train()
+        temp_metrics = temp_model.train(training_session=training_session)
         
         # Buscar ou criar modelo
         ml_model_temp, created = MLModel.objects.get_or_create(
@@ -461,7 +485,7 @@ def train_all_models(training_session=None):
     try:
         # Modelo de otimização do ventilador
         fan_model = FanOptimizationModel()
-        fan_metrics = fan_model.train()
+        fan_metrics = fan_model.train(training_session=training_session)
         
         ml_model_fan, created = MLModel.objects.get_or_create(
             model_type="fan_optimization",
@@ -492,7 +516,7 @@ def train_all_models(training_session=None):
     try:
         # Modelo de detecção de anomalias
         anomaly_model = AnomalyDetectionModel()
-        anomaly_metrics = anomaly_model.train()
+        anomaly_metrics = anomaly_model.train(training_session=training_session)
         
         ml_model_anomaly, created = MLModel.objects.get_or_create(
             model_type="anomaly_detection",
