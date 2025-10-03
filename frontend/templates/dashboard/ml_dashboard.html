@@ -1,4 +1,5 @@
 {% extends 'base/base.html' %}
+{% load ml_filters %}
 
 {% block title %}Dashboard ML - Ambienta{% endblock title %}
 
@@ -71,6 +72,69 @@
     </div>
 
     <!-- Estatísticas Gerais -->
+    <!-- Status do Ventilador -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-fan me-2"></i>
+                        Status do Ventilador
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-power-off fa-2x {% if fan_state %}text-success{% else %}text-secondary{% endif %}"></i>
+                                </div>
+                                <h4>{% if fan_state %}Ligado{% else %}Desligado{% endif %}</h4>
+                                {% if fan_confidence %}
+                                    <div class="progress mt-2" style="height: 8px;">
+                                        <div class="progress-bar {% if fan_confidence > 0.7 %}bg-success{% elif fan_confidence > 0.4 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                             role="progressbar" 
+                                             style="width: {{ fan_confidence|percentage }}%">
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">Confiança ML: {{ fan_confidence|percentage }}%</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-chart-pie fa-2x text-primary"></i>
+                                </div>
+                                <h4>{{ energy_savings|floatformat:1 }}%</h4>
+                                <small class="text-muted">Economia de Energia</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-tachometer-alt fa-2x text-info"></i>
+                                </div>
+                                <h4>{{ fan_effectiveness|floatformat:1 }}%</h4>
+                                <small class="text-muted">Efetividade</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="mb-2">
+                                    <i class="fas fa-history fa-2x text-warning"></i>
+                                </div>
+                                <h4>{{ fan_optimization_history|length }}</h4>
+                                <small class="text-muted">Otimizações (24h)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas Gerais -->
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="card metric-card h-100">
@@ -287,12 +351,36 @@
                                         <span class="badge {% if prediction.prediction.should_turn_on %}bg-success{% else %}bg-secondary{% endif %}">
                                             {{ prediction.prediction.should_turn_on|yesno:"Ligar,Manter Desligado" }}
                                         </span>
+                                        <div class="mt-1">
+                                            {% if prediction.prediction.confidence %}
+                                                <div class="progress" style="height: 5px;">
+                                                    <div class="progress-bar {% if prediction.prediction.confidence > 0.7 %}bg-success{% elif prediction.prediction.confidence > 0.4 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                                         role="progressbar" 
+                                                         style="width: {{ prediction.prediction.confidence|percentage }}%">
+                                                    </div>
+                                                </div>
+                                                <small class="text-muted">
+                                                    Confiança: {{ prediction.prediction.confidence|percentage }}%
+                                                </small>
+                                            {% endif %}
+                                        </div>
                                         {% if prediction.prediction.recommended_duration_minutes %}
-                                            <br>
-                                            <small class="text-muted">
-                                                {{ prediction.prediction.recommended_duration_minutes }} min
-                                            </small>
+                                            <div class="mt-1">
+                                                <small class="text-muted">
+                                                    <i class="fas fa-clock me-1"></i> {{ prediction.prediction.recommended_duration_minutes }} min
+                                                </small>
+                                            </div>
                                         {% endif %}
+                                        {% if prediction.prediction.predicted_efficiency %}
+                                            <div class="mt-1">
+                                                <small class="text-muted">
+                                                    <i class="fas fa-chart-line me-1"></i> Eficiência: {{ prediction.prediction.predicted_efficiency|floatformat:1 }}
+                                                </small>
+                                            </div>
+                                        {% endif %}
+                                        <small class="text-muted d-block mt-1">
+                                            <i class="fas fa-hashtag me-1"></i> ID: {{ prediction.id }}
+                                        </small>
                                     {% elif prediction.model.model_type == 'anomaly_detection' %}
                                         <span class="badge {% if prediction.prediction.is_anomaly %}bg-danger{% else %}bg-success{% endif %}">
                                             {{ prediction.prediction.is_anomaly|yesno:"Anomalia,Normal" }}
