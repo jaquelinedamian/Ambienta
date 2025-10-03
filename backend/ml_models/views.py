@@ -241,18 +241,18 @@ class FanOptimizationAPIView(APIView):
             fan_model = FanOptimizationModel()
             fan_model.model = ml_model.load_model()
             
-            # Fazer predição
-            should_turn_on, confidence = fan_model.predict(current_temp, current_hour, current_day)
+            # Fazer predição com detalhes adicionais
+            should_turn_on, confidence, optimal_duration, efficiency = fan_model.predict(
+                current_temp, current_hour, current_day
+            )
             
-            # Calcular duração baseada na temperatura e confiança
+            # Garantir duração mínima se ativado
             if should_turn_on:
-                base_duration = max(5, (current_temp - 25.0) * 10)
-                optimal_duration = int(base_duration * confidence)
-            else:
-                optimal_duration = 0
+                optimal_duration = max(5, optimal_duration)
             
             # Salvar predição
-            MLPrediction.objects.create(
+            # Criar registro detalhado da predição
+            prediction_record = MLPrediction.objects.create(
                 model=ml_model,
                 input_data={
                     'current_temperature': current_temp,
@@ -262,7 +262,9 @@ class FanOptimizationAPIView(APIView):
                 prediction={
                     'should_turn_on': bool(should_turn_on),
                     'confidence': float(confidence),
-                    'optimal_duration_minutes': optimal_duration
+                    'optimal_duration_minutes': optimal_duration,
+                    'predicted_efficiency': float(efficiency),
+                    'timestamp': timezone.now().isoformat()
                 }
             )
             
@@ -270,8 +272,10 @@ class FanOptimizationAPIView(APIView):
                 'should_turn_on': bool(should_turn_on),
                 'confidence': float(confidence),
                 'recommended_duration_minutes': optimal_duration,
-                'reason': f'Otimização ML (modelo {ml_model.name})',
-                'current_temperature': current_temp
+                'predicted_efficiency': float(efficiency),
+                'reason': f'Otimização ML (modelo {ml_model.name} - Eficiência: {efficiency:.1f})',
+                'current_temperature': current_temp,
+                'prediction_id': prediction_record.id,  # Adicionar ID da predição para rastreamento
             }, status=status.HTTP_200_OK)
             
         except Exception as e:

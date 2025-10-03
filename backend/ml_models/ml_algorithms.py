@@ -217,6 +217,49 @@ class FanOptimizationModel:
     def __init__(self):
         self.model = None
         self.temperature_threshold = 25.0
+        
+    def get_current_state(self):
+        """
+        Obtém o estado atual do sistema
+        """
+        try:
+            # Pegar última leitura de temperatura
+            last_reading = Reading.objects.order_by('-timestamp').first()
+            
+            # Pegar último estado do ventilador
+            last_fan_state = FanState.objects.order_by('-timestamp').first()
+            
+            if not last_reading:
+                return {
+                    'error': 'Sem leituras disponíveis',
+                    'state': False,
+                    'confidence': 0,
+                    'temperature': None
+                }
+            
+            # Se não tiver estado do ventilador, assume desligado
+            current_state = last_fan_state.state if last_fan_state else False
+            
+            # Fazer predição com os dados atuais
+            should_turn_on, confidence = self.predict(
+                current_temp=last_reading.temperature,
+                current_hour=last_reading.timestamp.hour,
+                current_day=last_reading.timestamp.weekday()
+            )
+            
+            return {
+                'state': should_turn_on,
+                'confidence': float(confidence),
+                'temperature': float(last_reading.temperature)
+            }
+            
+        except Exception as e:
+            return {
+                'error': str(e),
+                'state': False,
+                'confidence': 0,
+                'temperature': None
+            }
     
     def get_training_data(self, days_back=30):
         """
@@ -315,6 +358,96 @@ class FanOptimizationModel:
         
         return metrics
     
+    def predict(self, current_temp, current_hour, current_day):
+        """
+        Prediz se o ventilador deve ser ligado e com qual confiança.
+        Retorna uma tupla (should_turn_on, confidence, duration, efficiency)
+        """
+        from sensors.models import FanState, Reading
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        if self.model is None:
+            # Fallback para regra simples
+            should_turn_on = current_temp > self.temperature_threshold
+            return should_turn_on, 0.5, 5, 0.0  # Valores padrão para modo fallback
+        
+        # Buscar histórico recente de efetividade
+        recent_fan_states = FanState.objects.filter(
+            timestamp__gte=timezone.now() - timedelta(hours=24)
+        ).order_by('-timestamp')
+        
+        historical_effectiveness = 0.0
+        if recent_fan_states.exists():
+            successful_activations = 0
+            total_activations = 0
+            for state in recent_fan_states:
+                if state.start_time and state.end_time:
+                    temp_before = Reading.objects.filter(
+                        timestamp__lte=state.start_time
+                    ).order_by('-timestamp').first()
+                    
+                    temp_after = Reading.objects.filter(
+                        timestamp__gte=state.end_time
+                    ).order_by('timestamp').first()
+                    
+                    if temp_before and temp_after:
+                        if temp_before.temperature > temp_after.temperature:
+                            successful_activations += 1
+                        total_activations += 1
+            
+            if total_activations > 0:
+                historical_effectiveness = successful_activations / total_activations
+        
+        # Testar diferentes durações
+        durations = [5, 10, 15, 20, 30, 45, 60]
+        best_duration = 5
+        best_efficiency = 0
+        total_efficiency = 0
+        positive_scenarios = 0
+        
+        for duration in durations:
+            predicted_efficiency = self.model.predict([[
+                current_temp, duration, current_hour, current_day
+            ]])[0]
+            
+            # Ajustar eficiência baseado no histórico
+            adjusted_efficiency = predicted_efficiency * (0.7 + 0.3 * historical_effectiveness)
+            
+            total_efficiency += adjusted_efficiency
+            if adjusted_efficiency > 0:
+                positive_scenarios += 1
+            
+            if adjusted_efficiency > best_efficiency:
+                best_efficiency = adjusted_efficiency
+                best_duration = duration
+        
+        # Determinar se deve ligar baseado na eficiência média ajustada
+        avg_efficiency = total_efficiency / len(durations)
+        min_efficiency_threshold = 0.1  # Eficiência mínima requerida
+        
+        should_turn_on = (
+            avg_efficiency > min_efficiency_threshold and 
+            current_temp > self.temperature_threshold and
+            positive_scenarios >= len(durations) // 2  # Pelo menos metade dos cenários positivos
+        )
+        
+        # Calcular confiança com base em múltiplos fatores
+        if should_turn_on:
+            efficiency_factor = best_efficiency / max(predicted_efficiency for duration in durations)
+            historical_factor = 0.7 + 0.3 * historical_effectiveness
+            temperature_factor = min(1.0, (current_temp - self.temperature_threshold) / 5.0)
+            
+            confidence = min(1.0, max(0.1,
+                efficiency_factor * 0.4 +  # Peso da eficiência prevista
+                historical_factor * 0.4 +  # Peso do histórico
+                temperature_factor * 0.2    # Peso da temperatura atual
+            ))
+        else:
+            confidence = min(1.0, max(0.1, 1.0 - (positive_scenarios / len(durations))))
+        
+        return should_turn_on, confidence, best_duration, best_efficiency
+
     def optimize_fan_duration(self, current_temp, current_hour):
         """
         Sugere duração otimizada para ligar o ventilador
