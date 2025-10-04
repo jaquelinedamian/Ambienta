@@ -137,36 +137,29 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
     fields = [
         'wifi_ssid', 'wifi_password', 
         'start_hour', 'end_hour', 
-        'force_on', 'ml_control'
+        'force_on'
     ]
     template_name = 'sensors/device_config_form.html'
-
-    # Lembrete: Se 'dashboard' não funcionar, mude para 'dashboard_view'
     success_url = reverse_lazy('dashboard')
 
     def get_object(self, queryset=None):
         """
         Retorna ou cria uma configuração com valores padrão.
-        Todos os campos são inicializados para evitar erros NULL.
         """
-        config, created = DeviceConfig.objects.get_or_create(
-            pk=1,
-            defaults={
-                'device_id': 'ambienta_esp32_1',
-                'wifi_ssid': 'Ambienta-WiFi',
-                'wifi_password': 'padrao',
-                'start_hour': time(8, 0),
-                'end_hour': time(18, 0),
-                'force_on': False,
-                'ml_control': False,
-                'ml_duration': 0,
-                'ml_start_time': None,
-                'last_updated': timezone.now()
-            }
-        )
-        
-        # Garante que campos obrigatórios tenham valores mesmo se já existir
-        if created or not config.last_updated:
-            config.last_updated = timezone.now()
-            config.save()
-        return config
+        try:
+            config = DeviceConfig.objects.get(pk=1)
+            # Garante que campos obrigatórios tenham valores
+            if not config.last_updated:
+                config.last_updated = timezone.now()
+                config.save()
+            return config
+        except DeviceConfig.DoesNotExist:
+            config = DeviceConfig.objects.create(
+                device_id='default-device',
+                wifi_ssid='Ambienta-WiFi',
+                wifi_password='padrao',
+                start_hour=time(8, 0),
+                end_hour=time(18, 0),
+                force_on=False
+            )
+            return config
