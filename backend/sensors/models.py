@@ -54,8 +54,21 @@ class DeviceConfig(models.Model):
     
     # NOVO: Campo para ligar o ventilador imediatamente (controle manual)
     force_on = models.BooleanField(default=False, verbose_name="Forçar Ventilador Ligado")
+    
+    # NOVO: Campo para tracking do controle ML
+    ml_control = models.BooleanField(default=False, verbose_name="Controle por ML")
+    ml_duration = models.IntegerField(default=0, verbose_name="Duração recomendada (minutos)")
+    ml_start_time = models.DateTimeField(null=True, blank=True)
 
     last_updated = models.DateTimeField(auto_now=True)
+    
+    def get_time_string(self, time_field):
+        """Helper para retornar horário como string"""
+        if isinstance(time_field, str):
+            from datetime import datetime
+            time_obj = datetime.strptime(time_field, '%H:%M:%S').time()
+            return time_obj.strftime('%H:%M:%S')
+        return time_field.strftime('%H:%M:%S')
 
     def __str__(self):
         return f"Configuração do Dispositivo {self.device_id}"

@@ -9,8 +9,8 @@ class MlModelsConfig(AppConfig):
     verbose_name = 'Modelos de Machine Learning'
     
     def ready(self):
-        # Importar signals para ativar processamento automático
-        try:
-            from . import signals
-        except ImportError:
-            pass
+        """
+        Importa e inicializa os signals do app
+        """
+        import ml_models.signals  # importação explícita
+        print("ML Models signals carregados!")

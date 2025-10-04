@@ -1,20 +1,15 @@
-# backend/ml_models/integrations.py
-
-"""
-Integrações do sistema de ML com outras partes do projeto
-"""
-
-from django.utils import timezone
 from datetime import datetime, timedelta
 import logging
 
 from .models import MLModel, MLPrediction
+from .utils import serialize_ml_output
 from .ml_algorithms import (
     TemperaturePredictionModel,
     FanOptimizationModel,
     AnomalyDetectionModel
 )
 from sensors.models import Reading, FanState, DeviceConfig
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +68,12 @@ class MLIntegrationService:
             
             if not ml_model:
                 # Fallback para regra simples
-                is_anomaly = temperature < 0 or temperature > 50
-                return {
-                    'is_anomaly': is_anomaly,
+                result = {
+                    'is_anomaly': temperature < 0 or temperature > 50,
                     'confidence': 0.5,
                     'method': 'rule_based'
                 }
+                return serialize_ml_output(result)  # Serializa resultado
             
             # Usar modelo ML
             anomaly_model = AnomalyDetectionModel()
@@ -92,10 +87,16 @@ class MLIntegrationService:
                 result = anomaly_model.detect_anomaly(temperature, hour)
                 result['method'] = 'ml_model'
                 
+                # Serializa o resultado para garantir compatibilidade JSON
+                result = serialize_ml_output(result)
+                
                 # Salvar predição
                 MLPrediction.objects.create(
                     model=ml_model,
-                    input_data={'temperature': float(temperature), 'hour': int(hour) if hour is not None else None},
+                    input_data={
+                        'temperature': float(temperature), 
+                        'hour': int(hour) if hour is not None else None
+                    },
                     prediction=result,
                     confidence=float(result.get('confidence', 0))
                 )
@@ -106,11 +107,12 @@ class MLIntegrationService:
             logger.error(f"Erro na detecção de anomalias: {str(e)}")
         
         # Fallback
-        return {
+        result = {
             'is_anomaly': False,
             'confidence': 0,
             'method': 'error_fallback'
         }
+        return serialize_ml_output(result)
     
     @staticmethod
     def optimize_fan_control(current_temperature, current_hour):
@@ -128,17 +130,19 @@ class MLIntegrationService:
                 # Fallback para regra simples
                 if current_temperature > 25.0:
                     duration = max(5, (current_temperature - 25.0) * 10)
-                    return {
+                    result = {
                         'recommended_duration_minutes': int(duration),
                         'should_turn_on': True,
                         'method': 'rule_based'
                     }
+                    return serialize_ml_output(result)
                 else:
-                    return {
+                    result = {
                         'recommended_duration_minutes': 0,
                         'should_turn_on': False,
                         'method': 'rule_based'
                     }
+                    return serialize_ml_output(result)
             
             # Usar modelo ML
             fan_model = FanOptimizationModel()
@@ -157,27 +161,31 @@ class MLIntegrationService:
                     'current_temperature': current_temperature
                 }
                 
+                # Serializa resultado antes de salvar
+                serialized_result = serialize_ml_output(result)
+                
                 # Salvar predição
                 MLPrediction.objects.create(
                     model=ml_model,
                     input_data={
-                        'current_temperature': current_temperature,
+                        'current_temperature': float(current_temperature),
                         'current_hour': current_hour
                     },
-                    prediction=result
+                    prediction=serialized_result
                 )
                 
-                return result
+                return serialized_result
             
         except Exception as e:
             logger.error(f"Erro na otimização do ventilador: {str(e)}")
         
         # Fallback
-        return {
+        result = {
             'recommended_duration_minutes': 10,
             'should_turn_on': current_temperature > 25.0,
             'method': 'error_fallback'
         }
+        return serialize_ml_output(result)
     
     @staticmethod
     def update_fan_config(optimization_result):
@@ -189,29 +197,37 @@ class MLIntegrationService:
                 return
             
             # Buscar ou criar configuração do dispositivo
-            config, created = DeviceConfig.objects.get_or_create(
-                device_id='ambienta_esp32_1',
-                defaults={
-                    'wifi_ssid': 'NomeDaSuaRede',
-                    'wifi_password': 'SuaSenhaAqui',
-                    'start_hour': '08:00:00',
-                    'end_hour': '18:00:00',
-                    'force_on': False
-                }
-            )
+            try:
+                config = DeviceConfig.objects.get(device_id='ambienta_esp32_1')
+            except DeviceConfig.DoesNotExist:
+                # Criar novo com valores padrão
+                config = DeviceConfig.objects.create(
+                    device_id='ambienta_esp32_1',
+                    wifi_ssid='NomeDaSuaRede',
+                    wifi_password='SuaSenhaAqui',
+                    start_hour='08:00:00',
+                    end_hour='18:00:00',
+                    force_on=False,
+                    ml_control=False,
+                    ml_duration=0,
+                    ml_start_time=None
+                )
             
             # Ativar ventilador se ML recomenda
             duration = optimization_result.get('recommended_duration_minutes', 10)
             
-            # Para implementação simples, usar force_on
-            # Em uma implementação mais avançada, poderia ter um campo específico
-            # para controle ML com timer
+            # Atualizar campos de controle ML
             if duration > 0:
+                now = timezone.now()
+                config.ml_control = True
+                config.ml_duration = duration
+                config.ml_start_time = now
                 config.force_on = True
-                config.save()
+                # Salvar explicitamente os campos que foram alterados
+                config.save(update_fields=['ml_control', 'ml_duration', 'ml_start_time', 'force_on'])
                 
                 logger.info(
-                    f"Ventilador ativado por ML - Duração recomendada: {duration} min"
+                    f"Ventilador ativado por ML - Duração recomendada: {duration} min - Início: {now.strftime('%H:%M:%S')}"
                 )
             
         except Exception as e:
@@ -230,10 +246,11 @@ class MLIntegrationService:
             ).first()
             
             if not ml_model:
-                return {
+                result = {
                     'error': 'Nenhum modelo de predição disponível',
                     'method': 'no_model'
                 }
+                return serialize_ml_output(result)
             
             # Usar modelo ML
             temp_model = TemperaturePredictionModel()
@@ -249,23 +266,28 @@ class MLIntegrationService:
                 for i, temp in enumerate(predictions):
                     forecast_time = now + timedelta(hours=i+1)
                     forecast_data.append({
-                        'hour': forecast_time.strftime('%Y-%m-%d %H:%M'),
-                        'predicted_temperature': round(temp, 2),
+                        'hour': forecast_time,  # Será serializado automaticamente
+                        'predicted_temperature': round(float(temp), 2),
                         'hour_offset': i + 1
                     })
+                
+                result = {
+                    'forecast': forecast_data,
+                    'method': 'ml_model',
+                    'model_name': ml_model.name
+                }
+                
+                # Serializar resultado antes de salvar
+                serialized_result = serialize_ml_output(result)
                 
                 # Salvar predição
                 MLPrediction.objects.create(
                     model=ml_model,
                     input_data={'hours_ahead': hours_ahead},
-                    prediction={'forecast': forecast_data}
+                    prediction=serialized_result
                 )
                 
-                return {
-                    'forecast': forecast_data,
-                    'method': 'ml_model',
-                    'model_name': ml_model.name
-                }
+                return serialized_result
             
         except Exception as e:
             logger.error(f"Erro na previsão de temperatura: {str(e)}")
@@ -282,21 +304,23 @@ class MLIntegrationService:
                 
                 forecast_time = timezone.now() + timedelta(hours=i+1)
                 simple_forecast.append({
-                    'hour': forecast_time.strftime('%Y-%m-%d %H:%M'),
-                    'predicted_temperature': round(predicted_temp, 2),
+                    'hour': forecast_time,  # Será serializado automaticamente
+                    'predicted_temperature': round(float(predicted_temp), 2),
                     'hour_offset': i + 1
                 })
             
-            return {
+            result = {
                 'forecast': simple_forecast,
                 'method': 'simple_fallback'
             }
+            return serialize_ml_output(result)
             
         except Reading.DoesNotExist:
-            return {
+            result = {
                 'error': 'Nenhum dado histórico disponível',
                 'method': 'no_data'
             }
+            return serialize_ml_output(result)
     
     @staticmethod
     def get_system_recommendations():
@@ -351,7 +375,7 @@ class MLIntegrationService:
         except Exception as e:
             logger.error(f"Erro ao gerar recomendações: {str(e)}")
         
-        return recommendations
+        return serialize_ml_output(recommendations)
 
 
 # Funções utilitárias para uso em outros apps
