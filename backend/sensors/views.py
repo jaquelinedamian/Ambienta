@@ -141,8 +141,7 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
     success_url = reverse_lazy('dashboard')
 
     def get_object(self, queryset=None):
-        # CORREÇÃO AQUI: Usa get_or_create e fornece valores de tempo como objetos time
-        # Isso resolve o erro 'str' object has no attribute 'strftime'
+        # Usa get_or_create com todos os campos necessários
         config, created = DeviceConfig.objects.get_or_create(
             pk=1,
             defaults={
@@ -150,7 +149,11 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
                 'wifi_ssid': 'Ambienta-WiFi',
                 'wifi_password': 'padrao',
                 'start_hour': time(8, 0),    # Define 08:00 como objeto time
-                'end_hour': time(18, 0),      # Define 18:00 como objeto time
+                'end_hour': time(18, 0),     # Define 18:00 como objeto time
+                'force_on': False,           # Campo force_on
+                'ml_control': False,         # Campos ML
+                'ml_duration': 0,
+                'last_updated': timezone.now()  # Campo obrigatório
             }
         )
         return config
