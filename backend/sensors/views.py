@@ -42,7 +42,7 @@ class ReadingCreateAPIView(APIView):
         fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
 
         # OBTÉM A CONFIGURAÇÃO ATUAL (onde o force_on está)
-        config, config_created = DeviceConfig.objects.get_or_create(id=1)
+        config = DeviceConfig.get_default_config()
 
         # Ajuste: Use uma variável de limite, idealmente configurável no DeviceConfig
         temperature_limit = 25.0
@@ -116,7 +116,7 @@ class FanControlAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        config, created = DeviceConfig.objects.get_or_create(id=1)
+        config = DeviceConfig.get_default_config()
 
         # Retorna o status de force_on
         return JsonResponse({
@@ -139,26 +139,13 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
         'ml_control'  # Adicionado campo de ML
     ]
     template_name = 'sensors/device_config_form.html'
-    success_url = reverse_lazy('dashboard')
+    success_url = reverse_lazy('dashboard:dashboard')
 
     def get_object(self, queryset=None):
         """
-        Retorna ou cria uma configuração com valores padrão.
+        Retorna ou cria a configuração padrão do sistema
         """
-        try:
-            # Tenta pegar a primeira configuração existente
-            return DeviceConfig.objects.first()
-        except DeviceConfig.DoesNotExist:
-            # Se não existir, cria uma nova com valores padrão
-            return DeviceConfig.objects.create(
-                device_id='default-device',
-                wifi_ssid='Ambienta-WiFi',
-                wifi_password='padrao',
-                start_hour='08:00:00',
-                end_hour='18:00:00',
-                force_on=False,
-                ml_control=False
-            )
+        return DeviceConfig.get_default_config()
 
     def form_invalid(self, form):
         """
@@ -176,8 +163,7 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
             instance = form.save(commit=False)
             if not instance.device_id:
                 instance.device_id = 'default-device'
-            instance.save()
-            return super().form_valid(form)
+            return super().form_valid(form)  # isso vai salvar a instância
         except Exception as e:
             print("Erro ao salvar:", str(e))
             form.add_error(None, "Erro ao salvar configuração: " + str(e))

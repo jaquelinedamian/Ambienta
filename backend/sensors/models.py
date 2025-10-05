@@ -73,6 +73,22 @@ class DeviceConfig(models.Model):
     def __str__(self):
         return f"Configuração do Dispositivo {self.device_id}"
 
+    @classmethod
+    def get_default_config(cls):
+        """Retorna ou cria a configuração padrão do sistema"""
+        config, created = cls.objects.get_or_create(
+            device_id='default-device',
+            defaults={
+                'wifi_ssid': 'Ambienta-WiFi',
+                'wifi_password': 'padrao',
+                'start_hour': '08:00:00',
+                'end_hour': '18:00:00',
+                'force_on': False,
+                'ml_control': False
+            }
+        )
+        return config
+
 
 # --- SIGNAL PARA ENVIAR COMANDO MQTT ---
 
