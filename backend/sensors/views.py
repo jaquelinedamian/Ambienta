@@ -131,13 +131,12 @@ class FanControlAPIView(APIView):
 # ===============================================
 
 class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
-    # Garante que apenas usuários logados acessem esta view
-
     model = DeviceConfig
     fields = [
         'wifi_ssid', 'wifi_password', 
         'start_hour', 'end_hour', 
-        'force_on'
+        'force_on',
+        'ml_control'  # Adicionado campo de ML
     ]
     template_name = 'sensors/device_config_form.html'
     success_url = reverse_lazy('dashboard')
@@ -147,19 +146,34 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
         Retorna ou cria uma configuração com valores padrão.
         """
         try:
-            config = DeviceConfig.objects.get(pk=1)
-            # Garante que campos obrigatórios tenham valores
-            if not config.last_updated:
-                config.last_updated = timezone.now()
-                config.save()
-            return config
+            # Tenta pegar a primeira configuração existente
+            return DeviceConfig.objects.first()
         except DeviceConfig.DoesNotExist:
-            config = DeviceConfig.objects.create(
+            # Se não existir, cria uma nova com valores padrão
+            return DeviceConfig.objects.create(
                 device_id='default-device',
                 wifi_ssid='Ambienta-WiFi',
                 wifi_password='padrao',
-                start_hour=time(8, 0),
-                end_hour=time(18, 0),
-                force_on=False
+                start_hour='08:00:00',
+                end_hour='18:00:00',
+                force_on=False,
+                ml_control=False
             )
-            return config
+
+    def form_invalid(self, form):
+        """
+        Log dos erros do formulário para debug
+        """
+        print("Erros do formulário:", form.errors)
+        return super().form_invalid(form)
+
+    def form_valid(self, form):
+        """
+        Adiciona tratamento adicional antes de salvar
+        """
+        try:
+            return super().form_valid(form)
+        except Exception as e:
+            print("Erro ao salvar:", str(e))
+            form.add_error(None, "Erro ao salvar configuração: " + str(e))
+            return self.form_invalid(form)
