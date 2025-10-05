@@ -172,6 +172,11 @@ class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
         Adiciona tratamento adicional antes de salvar
         """
         try:
+            # Preserva o device_id existente
+            instance = form.save(commit=False)
+            if not instance.device_id:
+                instance.device_id = 'default-device'
+            instance.save()
             return super().form_valid(form)
         except Exception as e:
             print("Erro ao salvar:", str(e))

@@ -198,11 +198,11 @@ class MLIntegrationService:
             
             # Buscar ou criar configuração do dispositivo
             try:
-                config = DeviceConfig.objects.get(device_id='ambienta_esp32_1')
+                config = DeviceConfig.objects.get(device_id='default-device')
             except DeviceConfig.DoesNotExist:
                 # Criar novo com valores padrão
                 config = DeviceConfig.objects.create(
-                    device_id='ambienta_esp32_1',
+                    device_id='default-device',
                     wifi_ssid='NomeDaSuaRede',
                     wifi_password='SuaSenhaAqui',
                     start_hour='08:00:00',

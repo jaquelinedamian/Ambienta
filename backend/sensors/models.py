@@ -44,7 +44,7 @@ class FanLog(models.Model):
 # --- Modelo de Configuração do Dispositivo (para controle MQTT) ---
 
 class DeviceConfig(models.Model):
-    device_id = models.CharField(max_length=50, unique=True, default='ambienta_esp32_1')
+    device_id = models.CharField(max_length=50, unique=True, default='default-device')
     
     wifi_ssid = models.CharField(max_length=100, default='NomeDaSuaRede')
     wifi_password = models.CharField(max_length=100, default='SuaSenhaAqui')

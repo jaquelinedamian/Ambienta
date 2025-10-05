@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             name='DeviceConfig',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('device_id', models.CharField(default='ambienta_esp32_1', max_length=50, unique=True)),
+                ('device_id', models.CharField(default='default-device', max_length=50, unique=True)),
                 ('wifi_ssid', models.CharField(default='NomeDaSuaRede', max_length=100)),
                 ('wifi_password', models.CharField(default='SuaSenhaAqui', max_length=100)),
                 ('start_hour', models.TimeField(default='08:00:00')),
