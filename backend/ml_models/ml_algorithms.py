@@ -24,7 +24,7 @@ class TemperaturePredictionModel:
     
     def __init__(self):
         self.model = None
-        self.scaler = StandardScaler(with_feature_names=False)  # Desabilita feature names no scikit-learn 1.4+
+        self.scaler = StandardScaler()  # Versão compatível com scikit-learn < 1.4
         self.feature_columns = [
             'hour', 'day_of_week', 'month', 
             'temp_lag_1', 'temp_lag_2', 'temp_lag_3',
