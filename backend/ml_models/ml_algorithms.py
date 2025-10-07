@@ -318,10 +318,11 @@ class AnomalyDetectionModel:
     
     def __init__(self):
         self.model = IsolationForest(
-            contamination=0.1,  # 10% de dados anômalos esperados
+            contamination=0.01,  # Reduz para 1% de dados anômalos esperados
             random_state=42
         )
-        self.scaler = StandardScaler()
+        self.scaler = StandardScaler(with_mean=True, with_std=True)
+        self.normal_range = {'min': 15, 'max': 35}  # Faixa normal de temperatura
         self.is_fitted = False
     
     def get_training_data(self, days_back=30):
@@ -378,29 +379,56 @@ class AnomalyDetectionModel:
     
     def detect_anomaly(self, temperature, hour=None):
         """
-        Detecta se uma leitura é anômala
+        Detecta se uma temperatura é anômala usando regras de negócio e modelo ML
         """
+        # 1. Verificação baseada em regras de negócio primeiro
+        if temperature < self.normal_range['min'] or temperature > self.normal_range['max']:
+            return {
+                'is_anomaly': True,
+                'anomaly_score': -1.0,
+                'confidence': 1.0,
+                'reason': 'temperature_out_of_range'
+            }
+            
         if not self.is_fitted:
-            raise ValueError("Modelo não foi treinado")
+            return {
+                'is_anomaly': False,
+                'anomaly_score': 0.0,
+                'confidence': 0.5,
+                'reason': 'model_not_fitted'
+            }
         
         if hour is None:
             hour = datetime.now().hour
-        
-        # Calcular features básicas (sem dados históricos completos)
-        temp_diff = 0  # Simplificado
-        temp_deviation = 0  # Simplificado
-        
-        X = np.array([[temperature, hour, temp_diff, temp_deviation]])
-        X_scaled = self.scaler.transform(X)
-        
-        prediction = self.model.predict(X_scaled)[0]
-        anomaly_score = self.model.score_samples(X_scaled)[0]
-        
-        return {
-            'is_anomaly': prediction == -1,
-            'anomaly_score': anomaly_score,
-            'confidence': abs(anomaly_score)
-        }
+            
+        try:
+            # Calcular features básicas (sem dados históricos completos)
+            temp_diff = 0  # Simplificado
+            temp_deviation = 0  # Simplificado
+            
+            X = np.array([[temperature, hour, temp_diff, temp_deviation]])
+            X_scaled = self.scaler.transform(X)
+            
+            prediction = self.model.predict(X_scaled)[0]
+            anomaly_score = self.model.score_samples(X_scaled)[0]
+            
+            # Determina se é uma anomalia baseado no score
+            is_anomaly = prediction == -1 and abs(anomaly_score) > 0.5
+            
+            return {
+                'is_anomaly': is_anomaly,
+                'anomaly_score': float(anomaly_score),
+                'confidence': float(abs(anomaly_score)),
+                'reason': 'ml_prediction' if is_anomaly else 'normal'
+            }
+        except Exception as e:
+            # Fallback para regra simples em caso de erro
+            return {
+                'is_anomaly': False,
+                'anomaly_score': 0,
+                'confidence': 0.5,
+                'reason': f'error: {str(e)}'
+            }
 
 
 def train_all_models():
