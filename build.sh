@@ -50,4 +50,44 @@ python manage.py makemigrations --merge --noinput
 echo "Running migrations..."
 python manage.py migrate
 
+echo "Training ML models..."
+python manage.py shell << EOF
+from ml_models.models import MLModel
+from ml_models.ml_algorithms import TemperaturePredictionModel, AnomalyDetectionModel, FanOptimizationModel
+from django.utils import timezone
+
+def ensure_model(model_type, name, model_class):
+    model, created = MLModel.objects.get_or_create(
+        model_type=model_type,
+        defaults={
+            'name': name,
+            'version': '1.0',
+            'is_active': True
+        }
+    )
+    
+    if created or not model.model_data:
+        print(f"Training {name}...")
+        ml_instance = model_class()
+        try:
+            metrics = ml_instance.train()
+            model.save_model(ml_instance.model)
+            model.accuracy = metrics.get('r2', metrics.get('accuracy'))
+            model.mse = metrics.get('mse')
+            model.mae = metrics.get('mae')
+            model.r2_score = metrics.get('r2')
+            model.last_trained = timezone.now()
+            model.save()
+            print(f"{name} trained and saved successfully")
+        except Exception as e:
+            print(f"Error training {name}: {str(e)}")
+    else:
+        print(f"{name} already exists and has model data")
+
+# Train all models
+ensure_model('temperature_prediction', 'Temperature Prediction Model', TemperaturePredictionModel)
+ensure_model('anomaly_detection', 'Anomaly Detection Model', AnomalyDetectionModel)
+ensure_model('fan_optimization', 'Fan Optimization Model', FanOptimizationModel)
+EOF
+
 echo "Build script completed."
