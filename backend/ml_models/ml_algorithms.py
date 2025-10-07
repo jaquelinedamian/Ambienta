@@ -195,8 +195,37 @@ class FanOptimizationModel:
     """
     
     def __init__(self):
-        self.model = None
+        self.model = LinearRegression()  # Modelo mais simples por padrão
         self.temperature_threshold = 25.0
+    
+    def create_dummy_data(self):
+        """
+        Cria dados sintéticos básicos para treino inicial
+        """
+        temperatures = np.linspace(20, 35, 50)  # Temperaturas de 20°C a 35°C
+        hours = np.random.randint(0, 24, 50)    # Horas aleatórias
+        durations = []
+        efficiencies = []
+        
+        for temp in temperatures:
+            # Regra básica: quanto maior a temperatura, maior o tempo de ventilação
+            if temp > self.temperature_threshold:
+                base_duration = (temp - self.temperature_threshold) * 5  # 5 min por grau acima do limite
+                duration = max(5, min(30, base_duration))  # Entre 5 e 30 minutos
+                efficiency = max(0, min(1, (30 - temp) / 10))  # Eficiência baseada na temperatura
+            else:
+                duration = 0
+                efficiency = 0
+            
+            durations.append(duration)
+            efficiencies.append(efficiency)
+        
+        return pd.DataFrame({
+            'temperature': temperatures,
+            'hour': hours,
+            'duration': durations,
+            'efficiency': efficiencies
+        })
     
     def get_training_data(self, days_back=30):
         """
@@ -254,24 +283,33 @@ class FanOptimizationModel:
     
     def train(self, days_back=30):
         """
-        Treina modelo de otimização do ventilador
+        Treina modelo de otimização do ventilador usando dados reais ou sintéticos
         """
-        df = self.get_training_data(days_back)
+        try:
+            df = self.get_training_data(days_back)
+            using_synthetic = False
+        except (ValueError, Exception) as e:
+            print(f"Usando dados sintéticos para treinamento inicial: {str(e)}")
+            df = self.create_dummy_data()
+            using_synthetic = True
         
-        if len(df) < 5:
-            raise ValueError("Dados insuficientes para treinamento de otimização")
+        if using_synthetic:
+            # Para dados sintéticos, usamos features diferentes
+            X = df[['temperature', 'hour']].values
+            y = df['efficiency'].values
+            self.model = LinearRegression()
+        else:
+            # Para dados reais, usamos as features originais
+            features = ['temp_before', 'duration_minutes', 'hour', 'day_of_week']
+            X = df[features]
+            y = df['cooling_efficiency']
+            self.model = RandomForestRegressor(
+                n_estimators=50,
+                max_depth=8,
+                random_state=42
+            )
         
-        # Features para predizer eficiência de resfriamento
-        features = ['temp_before', 'duration_minutes', 'hour', 'day_of_week']
-        X = df[features]
-        y = df['cooling_efficiency']
-        
-        self.model = RandomForestRegressor(
-            n_estimators=50,
-            max_depth=8,
-            random_state=42
-        )
-        
+        # Treinar modelo
         self.model.fit(X, y)
         
         # Calcular métricas
@@ -279,7 +317,9 @@ class FanOptimizationModel:
         metrics = {
             'mse': float(mean_squared_error(y, y_pred)),
             'mae': float(mean_absolute_error(y, y_pred)),
-            'r2': float(r2_score(y, y_pred))
+            'r2': float(r2_score(y, y_pred)),
+            'using_synthetic': using_synthetic,
+            'samples': len(X)
         }
         
         return metrics
@@ -294,21 +334,33 @@ class FanOptimizationModel:
                 return max(5, (current_temp - self.temperature_threshold) * 10)
             return 0
         
-        # Testar diferentes durações
-        durations = [5, 10, 15, 20, 30, 45, 60]
-        best_duration = 5
-        best_efficiency = 0
-        
-        for duration in durations:
-            predicted_efficiency = self.model.predict([[
-                current_temp, duration, current_hour, datetime.now().weekday()
-            ]])[0]
+        # Se a temperatura está abaixo do limiar, não liga o ventilador
+        if current_temp <= self.temperature_threshold:
+            return 0
             
-            if predicted_efficiency > best_efficiency:
-                best_efficiency = predicted_efficiency
-                best_duration = duration
-        
-        return best_duration if current_temp > self.temperature_threshold else 0
+        # Verifica se o modelo é linear (sintético) ou RandomForest (real)
+        if isinstance(self.model, LinearRegression):
+            # Para modelo sintético, usa uma regra baseada na eficiência prevista
+            predicted_efficiency = self.model.predict([[current_temp, current_hour]])[0]
+            # Quanto maior a eficiência prevista, maior o tempo de ventilação
+            base_duration = max(5, predicted_efficiency * 30)  # Máximo de 30 minutos
+            return min(60, base_duration)  # Limita a 60 minutos
+        else:
+            # Para modelo real, testa diferentes durações
+            durations = [5, 10, 15, 20, 30, 45, 60]
+            best_duration = 5
+            best_efficiency = 0
+            
+            for duration in durations:
+                predicted_efficiency = self.model.predict([[
+                    current_temp, duration, current_hour, datetime.now().weekday()
+                ]])[0]
+                
+                if predicted_efficiency > best_efficiency:
+                    best_efficiency = predicted_efficiency
+                    best_duration = duration
+            
+            return best_duration
 
 
 class AnomalyDetectionModel:

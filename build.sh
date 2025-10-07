@@ -57,32 +57,42 @@ from ml_models.ml_algorithms import TemperaturePredictionModel, AnomalyDetection
 from django.utils import timezone
 
 def ensure_model(model_type, name, model_class):
-    model, created = MLModel.objects.get_or_create(
-        model_type=model_type,
-        defaults={
-            'name': name,
-            'version': '1.0',
-            'is_active': True
-        }
-    )
-    
-    if created or not model.model_data:
-        print(f"Training {name}...")
-        ml_instance = model_class()
-        try:
-            metrics = ml_instance.train()
-            model.save_model(ml_instance.model)
-            model.accuracy = metrics.get('r2', metrics.get('accuracy'))
-            model.mse = metrics.get('mse')
-            model.mae = metrics.get('mae')
-            model.r2_score = metrics.get('r2')
-            model.last_trained = timezone.now()
-            model.save()
-            print(f"{name} trained and saved successfully")
-        except Exception as e:
-            print(f"Error training {name}: {str(e)}")
-    else:
-        print(f"{name} already exists and has model data")
+    try:
+        model, created = MLModel.objects.get_or_create(
+            model_type=model_type,
+            defaults={
+                'name': name,
+                'version': '1.0',
+                'is_active': True
+            }
+        )
+        
+        if created or not model.model_data:
+            print(f"Training {name}...")
+            ml_instance = model_class()
+            try:
+                metrics = ml_instance.train()
+                if metrics:  # Se o treinamento foi bem sucedido
+                    model.save_model(ml_instance.model)
+                    model.accuracy = metrics.get('r2', metrics.get('accuracy'))
+                    model.mse = metrics.get('mse')
+                    model.mae = metrics.get('mae')
+                    model.r2_score = metrics.get('r2')
+                    model.last_trained = timezone.now()
+                    model.save()
+                    print(f"{name} trained and saved successfully")
+                else:
+                    print(f"Warning: {name} training returned no metrics")
+            except Exception as e:
+                print(f"Warning: Error training {name}: {str(e)}")
+                if not model.model_data:  # Se não temos modelo salvo
+                    model.is_active = False  # Desativa o modelo
+                    model.save()
+        else:
+            print(f"{name} already exists and has model data")
+    except Exception as e:
+        print(f"Error ensuring model {name}: {str(e)}")
+        # Não deixa a exceção se propagar para não falhar o deploy
 
 # Train all models
 ensure_model('temperature_prediction', 'Temperature Prediction Model', TemperaturePredictionModel)
@@ -91,7 +101,7 @@ ensure_model('fan_optimization', 'Fan Optimization Model', FanOptimizationModel)
 EOF
 
 echo "Running Gunicorn with optimized settings..."
-cd backend && gunicorn \
+gunicorn \
     --bind 0.0.0.0:$PORT \
     --workers 2 \
     --threads 2 \
