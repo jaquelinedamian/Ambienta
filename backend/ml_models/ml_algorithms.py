@@ -200,32 +200,38 @@ class FanOptimizationModel:
     
     def create_dummy_data(self):
         """
-        Cria dados sintéticos básicos para treino inicial
+        Cria dados sintéticos básicos para treino inicial com as mesmas colunas dos dados reais
         """
-        temperatures = np.linspace(20, 35, 50)  # Temperaturas de 20°C a 35°C
-        hours = np.random.randint(0, 24, 50)    # Horas aleatórias
-        durations = []
-        efficiencies = []
+        # Criar 50 amostras de dados sintéticos
+        n_samples = 50
+        data = []
         
-        for temp in temperatures:
-            # Regra básica: quanto maior a temperatura, maior o tempo de ventilação
-            if temp > self.temperature_threshold:
-                base_duration = (temp - self.temperature_threshold) * 5  # 5 min por grau acima do limite
-                duration = max(5, min(30, base_duration))  # Entre 5 e 30 minutos
-                efficiency = max(0, min(1, (30 - temp) / 10))  # Eficiência baseada na temperatura
-            else:
-                duration = 0
-                efficiency = 0
+        # Gerar dados aleatórios que seguem regras simples
+        for _ in range(n_samples):
+            # Temperatura inicial entre 20°C e 35°C
+            temp_before = np.random.uniform(20, 35)
+            hour = np.random.randint(0, 24)
+            day_of_week = np.random.randint(0, 7)
             
-            durations.append(duration)
-            efficiencies.append(efficiency)
+            # Define duração baseada na temperatura
+            if temp_before > self.temperature_threshold:
+                duration_minutes = max(5, min(60, (temp_before - self.temperature_threshold) * 5))
+            else:
+                duration_minutes = 0
+                
+            # Simula redução de temperatura baseada na duração
+            # Quanto maior a duração, maior a redução, mas com um limite
+            cooling_efficiency = min(5, duration_minutes * 0.1) if duration_minutes > 0 else 0
+            
+            data.append({
+                'temp_before': temp_before,
+                'duration_minutes': duration_minutes,
+                'hour': hour,
+                'day_of_week': day_of_week,
+                'cooling_efficiency': cooling_efficiency
+            })
         
-        return pd.DataFrame({
-            'temperature': temperatures,
-            'hour': hours,
-            'duration': durations,
-            'efficiency': efficiencies
-        })
+        return pd.DataFrame(data)
     
     def get_training_data(self, days_back=30):
         """
@@ -285,29 +291,44 @@ class FanOptimizationModel:
         """
         Treina modelo de otimização do ventilador usando dados reais ou sintéticos
         """
+        # Define features padrão que serão usadas tanto para dados reais quanto sintéticos
+        features = ['temp_before', 'duration_minutes', 'hour', 'day_of_week']
+        
         try:
+            # Tenta obter dados reais
             df = self.get_training_data(days_back)
+            if len(df) < 5:  # Se tiver poucos dados reais, usa dados sintéticos
+                raise ValueError("Dados reais insuficientes (mínimo 5 amostras)")
             using_synthetic = False
-        except (ValueError, Exception) as e:
+        except Exception as e:
             print(f"Usando dados sintéticos para treinamento inicial: {str(e)}")
             df = self.create_dummy_data()
             using_synthetic = True
         
-        if using_synthetic:
-            # Para dados sintéticos, usamos features diferentes
-            X = df[['temperature', 'hour']].values
-            y = df['efficiency'].values
-            self.model = LinearRegression()
-        else:
-            # Para dados reais, usamos as features originais
-            features = ['temp_before', 'duration_minutes', 'hour', 'day_of_week']
+        try:
+            # Verifica se todas as features necessárias estão presentes
+            if not all(feature in df.columns for feature in features):
+                missing = [f for f in features if f not in df.columns]
+                raise ValueError(f"Colunas ausentes no DataFrame: {missing}")
+            
+            # Prepara features e target
             X = df[features]
             y = df['cooling_efficiency']
-            self.model = RandomForestRegressor(
-                n_estimators=50,
-                max_depth=8,
-                random_state=42
-            )
+            
+            # Escolhe o modelo baseado no tipo de dados
+            if using_synthetic:
+                print("Usando modelo Linear Regression para dados sintéticos")
+                self.model = LinearRegression()
+            else:
+                print("Usando Random Forest para dados reais")
+                self.model = RandomForestRegressor(
+                    n_estimators=50,
+                    max_depth=8,
+                    random_state=42
+                )
+        except Exception as e:
+            print(f"Erro durante preparação e treinamento do modelo: {str(e)}")
+            raise
         
         # Treinar modelo
         self.model.fit(X, y)
@@ -338,29 +359,31 @@ class FanOptimizationModel:
         if current_temp <= self.temperature_threshold:
             return 0
             
-        # Verifica se o modelo é linear (sintético) ou RandomForest (real)
-        if isinstance(self.model, LinearRegression):
-            # Para modelo sintético, usa uma regra baseada na eficiência prevista
-            predicted_efficiency = self.model.predict([[current_temp, current_hour]])[0]
-            # Quanto maior a eficiência prevista, maior o tempo de ventilação
-            base_duration = max(5, predicted_efficiency * 30)  # Máximo de 30 minutos
-            return min(60, base_duration)  # Limita a 60 minutos
-        else:
-            # Para modelo real, testa diferentes durações
-            durations = [5, 10, 15, 20, 30, 45, 60]
-            best_duration = 5
-            best_efficiency = 0
+        # Testa diferentes durações para encontrar a melhor
+        durations = [5, 10, 15, 20, 30, 45, 60]
+        best_duration = 5
+        best_efficiency = 0
+        
+        # Prepara dados de previsão com os mesmos nomes de colunas do treinamento
+        for duration in durations:
+            features = {
+                'temp_before': current_temp,
+                'duration_minutes': duration,
+                'hour': current_hour,
+                'day_of_week': datetime.now().weekday()
+            }
+            X_pred = pd.DataFrame([features])
             
-            for duration in durations:
-                predicted_efficiency = self.model.predict([[
-                    current_temp, duration, current_hour, datetime.now().weekday()
-                ]])[0]
-                
+            try:
+                predicted_efficiency = self.model.predict(X_pred)[0]
                 if predicted_efficiency > best_efficiency:
                     best_efficiency = predicted_efficiency
                     best_duration = duration
-            
-            return best_duration
+            except Exception as e:
+                print(f"Erro ao prever eficiência: {str(e)}")
+                continue
+        
+        return best_duration
 
 
 class AnomalyDetectionModel:
