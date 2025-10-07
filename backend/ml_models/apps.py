@@ -17,18 +17,6 @@ class MlModelsConfig(AppConfig):
         
         # Evita múltiplas inicializações
         if os.environ.get('RUN_MAIN') or 'gunicorn' in sys.modules:
+            # Carrega apenas os signals, sem acessar o banco de dados
             import ml_models.signals
-            
-            # Apenas verifica status dos modelos
-            from .models import MLModel
-            
-            try:
-                active_models = MLModel.objects.filter(is_active=True).count()
-                if active_models > 0:
-                    print(f"{active_models} modelos ML ativos encontrados")
-                else:
-                    print("Nenhum modelo ML ativo encontrado")
-                    print("Use 'python manage.py train_ml_models' para treinar")
-            except Exception as e:
-                print(f"Aviso: Não foi possível verificar status dos modelos: {str(e)}")
-                print("Execute as migrações se este for o primeiro deploy")
+            print("ML Models signals carregados!")
