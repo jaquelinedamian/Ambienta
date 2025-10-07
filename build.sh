@@ -44,6 +44,9 @@ token, created = Token.objects.get_or_create(user=esp_user)
 print(f'ESP8266 token: {token.key}')
 EOF
 
+echo "Running makemigrations merge to resolve conflicts..."
+python manage.py makemigrations --merge --noinput
+
 echo "Running migrations..."
 python manage.py migrate
 
