@@ -79,8 +79,11 @@ class MLModel(models.Model):
             print(f"Erro ao carregar modelo: {e}")
         return None
     
-    def save_model(self, model, base_path=None):
-        """Salva o modelo pickle em arquivo"""
+    def save_model(self, model_data, base_path=None):
+        """
+        Salva o modelo pickle em arquivo
+        model_data pode ser o modelo direto ou um dicionário com modelo e scaler
+        """
         if base_path is None:
             base_path = self.get_models_dir()
             
@@ -88,8 +91,16 @@ class MLModel(models.Model):
         filename = f"{self.model_type}_v{self.version}_{self.id}.pkl"
         filepath = os.path.join(base_path, filename)
         
+        # Se for apenas o modelo, converte para dicionário
+        if not isinstance(model_data, dict):
+            model_data = {'model': model_data, 'scaler': None}
+            
+        # Garante que temos as chaves necessárias
+        if 'model' not in model_data:
+            raise ValueError("model_data deve conter a chave 'model'")
+        
         with open(filepath, 'wb') as f:
-            pickle.dump(model, f)
+            pickle.dump(model_data, f)
         
         self.model_file_path = filepath
         self.save()

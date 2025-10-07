@@ -321,7 +321,9 @@ class AnomalyDetectionModel:
             contamination=0.01,  # Reduz para 1% de dados anômalos esperados
             random_state=42
         )
-        self.scaler = StandardScaler(with_mean=True, with_std=True)
+        # Configura o scaler com nomes de features conhecidos
+        self.scaler = StandardScaler()
+        self.feature_names = ['temperature', 'hour', 'temp_diff', 'temp_deviation']
         self.normal_range = {'min': 15, 'max': 35}  # Faixa normal de temperatura
         self.is_fitted = False
     
@@ -357,15 +359,22 @@ class AnomalyDetectionModel:
         """
         df = self.get_training_data(days_back)
         
-        features = ['temperature', 'hour', 'temp_diff', 'temp_deviation']
-        X = df[features]
+        # Usar feature names definidos na inicialização
+        X = df[self.feature_names].copy()
         
-        # Normalizar dados
+        # Garantir que não há valores nulos
+        X = X.fillna(0)
+        
+        # Normalizar dados (fit_transform para treino)
         X_scaled = self.scaler.fit_transform(X)
         
         # Treinar modelo
         self.model.fit(X_scaled)
         self.is_fitted = True
+        
+        # Verificar performance em dados de treino
+        predictions = self.model.predict(X_scaled)
+        scores = self.model.score_samples(X_scaled)
         
         # Avaliar em dados de treinamento
         predictions = self.model.predict(X_scaled)
@@ -462,7 +471,12 @@ def train_all_models():
         ml_model_temp.is_active = True
         ml_model_temp.save()
         
-        ml_model_temp.save_model(temp_model.model)
+        # Salva modelo e scaler juntos
+        model_data = {
+            'model': temp_model.model,
+            'scaler': temp_model.scaler
+        }
+        ml_model_temp.save_model(model_data)
         
         results['temperature_prediction'] = temp_metrics
         
@@ -493,7 +507,12 @@ def train_all_models():
         ml_model_fan.is_active = True
         ml_model_fan.save()
         
-        ml_model_fan.save_model(fan_model.model)
+        # Salva modelo e scaler juntos
+        model_data = {
+            'model': fan_model.model,
+            'scaler': fan_model.scaler
+        }
+        ml_model_fan.save_model(model_data)
         
         results['fan_optimization'] = fan_metrics
         
@@ -522,9 +541,11 @@ def train_all_models():
         ml_model_anomaly.is_active = True
         ml_model_anomaly.save()
         
-        # Salvar o modelo com scaler
+        # Salvar o modelo com scaler e estado
         model_data = {
             'model': anomaly_model.model,
+            'scaler': anomaly_model.scaler,
+            'is_fitted': True,  # Importante para o detector de anomalias
             'scaler': anomaly_model.scaler
         }
         ml_model_anomaly.save_model(model_data)
