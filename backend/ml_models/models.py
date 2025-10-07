@@ -39,8 +39,8 @@ class MLModel(models.Model):
     # Parâmetros do modelo (JSON)
     hyperparameters = models.JSONField(default=dict, blank=True)
     
-    # Arquivo do modelo treinado
-    model_file_path = models.CharField(max_length=255, blank=True)
+    # Modelo serializado armazenado no banco
+    model_data = models.BinaryField(null=True, blank=True)
     
     class Meta:
         ordering = ['-created_at']
@@ -49,61 +49,43 @@ class MLModel(models.Model):
     def __str__(self):
         return f"{self.name} v{self.version} ({'Ativo' if self.is_active else 'Inativo'})"
     
-    def get_models_dir(self):
-        """Retorna o diretório absoluto para os modelos"""
-        from django.conf import settings
-        # Primeiro tenta usar o caminho configurado
-        models_dir = getattr(settings, 'ML_MODELS_DIR', None)
-        if models_dir:
-            return models_dir
-            
-        # Se não configurado, usa o diretório padrão
-        return os.path.join(settings.BASE_DIR, 'models')
     
     def load_model(self):
-        """Carrega o modelo pickle do arquivo"""
+        """Carrega o modelo pickle dos dados binários"""
         try:
-            # Se o caminho é relativo, converte para absoluto
-            if self.model_file_path and not os.path.isabs(self.model_file_path):
-                models_dir = self.get_models_dir()
-                absolute_path = os.path.join(models_dir, os.path.basename(self.model_file_path))
+            if self.model_data:
+                return pickle.loads(self.model_data)
             else:
-                absolute_path = self.model_file_path
-
-            if absolute_path and os.path.exists(absolute_path):
-                with open(absolute_path, 'rb') as f:
-                    return pickle.load(f)
-            else:
-                print(f"Modelo não encontrado em: {absolute_path}")
+                print("Modelo não encontrado no banco de dados")
         except Exception as e:
             print(f"Erro ao carregar modelo: {e}")
         return None
     
-    def save_model(self, model_data, base_path=None):
+    def save_model(self, model_data):
         """
-        Salva o modelo pickle em arquivo
+        Salva o modelo como dados binários
         model_data pode ser o modelo direto ou um dicionário com modelo e scaler
         """
-        if base_path is None:
-            base_path = self.get_models_dir()
+        try:
+            # Se for apenas o modelo, converte para dicionário
+            if not isinstance(model_data, dict):
+                model_data = {'model': model_data, 'scaler': None}
+                
+            # Garante que temos as chaves necessárias
+            if 'model' not in model_data:
+                raise ValueError("model_data deve conter a chave 'model'")
             
-        os.makedirs(base_path, exist_ok=True)
-        filename = f"{self.model_type}_v{self.version}_{self.id}.pkl"
-        filepath = os.path.join(base_path, filename)
-        
-        # Se for apenas o modelo, converte para dicionário
-        if not isinstance(model_data, dict):
-            model_data = {'model': model_data, 'scaler': None}
+            # Serializa o modelo para dados binários
+            self.model_data = pickle.dumps(model_data)
             
-        # Garante que temos as chaves necessárias
-        if 'model' not in model_data:
-            raise ValueError("model_data deve conter a chave 'model'")
-        
-        with open(filepath, 'wb') as f:
-            pickle.dump(model_data, f)
-        
-        self.model_file_path = filepath
-        self.save()
+            # Atualiza o timestamp
+            self.last_trained = timezone.now()
+            self.save()
+            
+            return True
+        except Exception as e:
+            print(f"Erro ao salvar modelo: {e}")
+            return False
 
 
 class MLPrediction(models.Model):

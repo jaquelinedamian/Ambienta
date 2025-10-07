@@ -12,7 +12,7 @@ class MLModelAdmin(admin.ModelAdmin):
     ]
     list_filter = ['model_type', 'is_active', 'created_at']
     search_fields = ['name', 'description']
-    readonly_fields = ['created_at', 'updated_at', 'model_file_path']
+    readonly_fields = ['created_at', 'updated_at', 'model_data']
     
     fieldsets = (
         ('Informações Básicas', {
@@ -25,7 +25,7 @@ class MLModelAdmin(admin.ModelAdmin):
             'fields': ('hyperparameters',)
         }),
         ('Timestamps', {
-            'fields': ('created_at', 'updated_at', 'last_trained', 'model_file_path'),
+            'fields': ('created_at', 'updated_at', 'last_trained', 'model_data'),
             'classes': ('collapse',)
         })
     )
