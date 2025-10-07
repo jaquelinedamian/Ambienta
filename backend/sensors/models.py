@@ -72,6 +72,34 @@ class DeviceConfig(models.Model):
 
     def __str__(self):
         return f"Configuração do Dispositivo {self.device_id}"
+    
+    def save(self, *args, **kwargs):
+        # Garante que os horários estão no formato correto antes de salvar
+        if isinstance(self.start_hour, str):
+            from datetime import datetime
+            try:
+                time_obj = datetime.strptime(self.start_hour, '%H:%M:%S').time()
+                self.start_hour = time_obj
+            except ValueError:
+                try:
+                    time_obj = datetime.strptime(self.start_hour, '%H:%M').time()
+                    self.start_hour = time_obj
+                except ValueError:
+                    pass
+                
+        if isinstance(self.end_hour, str):
+            from datetime import datetime
+            try:
+                time_obj = datetime.strptime(self.end_hour, '%H:%M:%S').time()
+                self.end_hour = time_obj
+            except ValueError:
+                try:
+                    time_obj = datetime.strptime(self.end_hour, '%H:%M').time()
+                    self.end_hour = time_obj
+                except ValueError:
+                    pass
+        
+        super().save(*args, **kwargs)
 
     @classmethod
     def get_default_config(cls):
@@ -107,8 +135,9 @@ def send_config_to_mqtt(sender, instance, **kwargs):
     Dispara a função de publicação MQTT sempre que um objeto DeviceConfig é salvo.
     """
     try:
-        if kwargs.get('created', False) or kwargs.get('update_fields'): 
-            publish_config(instance)
+        # Sempre publica quando houver qualquer salvamento
+        publish_config(instance)
+        print(f"MQTT Config Update - Start: {instance.start_hour}, End: {instance.end_hour}")
     except Exception as e:
         print(f"Aviso: Não foi possível publicar no MQTT: {str(e)}")
         # Não propaga o erro para permitir o funcionamento sem MQTT
