@@ -10,27 +10,25 @@ class MlModelsConfig(AppConfig):
     
     def ready(self):
         """
-        Importa e inicializa os signals do app
+        Importa e inicializa apenas os signals do app
         """
         import os
         import sys
         
         # Evita múltiplas inicializações
-        if 'gunicorn' in sys.modules:
-            # Em produção (Gunicorn)
+        if os.environ.get('RUN_MAIN') or 'gunicorn' in sys.modules:
+            import ml_models.signals
+            
+            # Apenas verifica status dos modelos
+            from .models import MLModel
+            
             try:
-                import ml_models.signals
-                from .models import MLModel
-                
-                # Verifica se já existem modelos treinados
-                if not MLModel.objects.filter(is_active=True).exists():
-                    print("Iniciando treinamento inicial dos modelos...")
+                active_models = MLModel.objects.filter(is_active=True).count()
+                if active_models > 0:
+                    print(f"{active_models} modelos ML ativos encontrados")
                 else:
-                    print("Modelos ML já existem e estão ativos")
+                    print("Nenhum modelo ML ativo encontrado")
+                    print("Use 'python manage.py train_ml_models' para treinar")
             except Exception as e:
-                print(f"Erro ao inicializar modelos ML: {str(e)}")
-        else:
-            # Em desenvolvimento
-            if os.environ.get('RUN_MAIN'):
-                import ml_models.signals
-                print("ML Models signals carregados (desenvolvimento)")
+                print(f"Aviso: Não foi possível verificar status dos modelos: {str(e)}")
+                print("Execute as migrações se este for o primeiro deploy")
