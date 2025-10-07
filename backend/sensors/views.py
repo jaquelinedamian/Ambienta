@@ -114,18 +114,9 @@ class FanControlAPIView(APIView):
     def get(self, request, *args, **kwargs):
         config = DeviceConfig.get_default_config()
         
-        # Se force_on está ativo, vamos retorná-lo e depois desligá-lo
-        was_force_on = config.force_on
-        
-        if was_force_on:
-            # Desliga o force_on imediatamente após ser lido
-            config.force_on = False
-            config.save()
-            print(f"Force ON desativado após uso para device {config.device_id}")
-
         return JsonResponse({
             'device_id': config.device_id,
-            'force_on': was_force_on,  # Retorna o valor original
+            'force_on': config.force_on,  # Retorna o valor atual sem modificá-lo
             'current_time': timezone.localtime().strftime('%H:%M:%S'),
             'start_hour': config.start_hour.strftime('%H:%M:%S'),
             'end_hour': config.end_hour.strftime('%H:%M:%S')
