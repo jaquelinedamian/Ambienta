@@ -216,15 +216,14 @@ class MLIntegrationService:
             # Ativar ventilador se ML recomenda
             duration = optimization_result.get('recommended_duration_minutes', 10)
             
-            # Atualizar campos de controle ML
-            if duration > 0:
+            # Atualizar campos de controle ML apenas se ML estiver ativado
+            if duration > 0 and config.ml_control:
                 now = timezone.now()
-                config.ml_control = True
                 config.ml_duration = duration
                 config.ml_start_time = now
                 config.force_on = True
                 # Salvar explicitamente os campos que foram alterados
-                config.save(update_fields=['ml_control', 'ml_duration', 'ml_start_time', 'force_on'])
+                config.save(update_fields=['ml_duration', 'ml_start_time', 'force_on'])
                 
                 logger.info(
                     f"Ventilador ativado por ML - Duração recomendada: {duration} min - Início: {now.strftime('%H:%M:%S')}"
