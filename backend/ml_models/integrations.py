@@ -120,6 +120,44 @@ class MLIntegrationService:
         Otimiza controle do ventilador usando ML
         """
         try:
+            # Obter configuração atual
+            config = DeviceConfig.objects.get(device_id='default-device')
+            
+            # Verificar se está dentro do horário permitido
+            current_time = timezone.localtime().time()
+            start_time = config.start_hour
+            end_time = config.end_hour
+            
+            # Se o horário atual está fora do período permitido, não liga
+            if start_time < end_time:  # Período normal (ex: 8:00 - 18:00)
+                if current_time < start_time or current_time > end_time:
+                    return {
+                        'recommended_duration_minutes': 0,
+                        'should_turn_on': False,
+                        'method': 'outside_hours',
+                        'message': f'Fora do horário permitido ({start_time.strftime("%H:%M")} - {end_time.strftime("%H:%M")})'
+                    }
+            else:  # Período que cruza meia-noite (ex: 22:00 - 06:00)
+                if current_time > end_time and current_time < start_time:
+                    return {
+                        'recommended_duration_minutes': 0,
+                        'should_turn_on': False,
+                        'method': 'outside_hours',
+                        'message': f'Fora do horário permitido ({start_time.strftime("%H:%M")} - {end_time.strftime("%H:%M")})'
+                    }
+            
+            # Verificar se o ventilador já está em um ciclo de ML
+            if config.ml_start_time:
+                time_since_start = timezone.now() - config.ml_start_time
+                if time_since_start.total_seconds() < (config.ml_duration * 60):
+                    # Ainda dentro do período recomendado, não faz nada
+                    return {
+                        'recommended_duration_minutes': 0,
+                        'should_turn_on': False,
+                        'method': 'cooling_in_progress',
+                        'message': f'Ciclo de resfriamento em andamento: {config.ml_duration}min'
+                    }
+
             # Buscar modelo ativo
             ml_model = MLModel.objects.filter(
                 model_type='fan_optimization',
@@ -127,9 +165,9 @@ class MLIntegrationService:
             ).first()
             
             if not ml_model:
-                # Fallback para regra simples
-                if current_temperature > 25.0:
-                    duration = max(5, (current_temperature - 25.0) * 10)
+                # Fallback para regra simples mais conservadora
+                if current_temperature > 27.0:  # Aumentado o limite
+                    duration = max(5, (current_temperature - 27.0) * 15)
                     result = {
                         'recommended_duration_minutes': int(duration),
                         'should_turn_on': True,

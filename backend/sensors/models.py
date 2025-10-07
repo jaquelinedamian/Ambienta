@@ -76,36 +76,36 @@ class DeviceConfig(models.Model):
     @classmethod
     def get_default_config(cls):
         """Retorna ou cria a configuração padrão do sistema"""
+        from django.db import transaction
+        
+        default_values = {
+            'device_id': 'default-device',
+            'wifi_ssid': 'Ambienta-WiFi',
+            'wifi_password': 'padrao',
+            'start_hour': '08:00:00',
+            'end_hour': '18:00:00',
+            'force_on': False,
+            'ml_control': False,
+            'ml_duration': 0,
+            'ml_start_time': None
+        }
+        
         try:
-            # Primeiro tenta pegar qualquer configuração existente
-            config = cls.objects.first()
-            if config:
-                # Atualiza para os valores padrão se necessário
-                config.device_id = 'default-device'
-                config.save()
-                return config
-            
-            # Se não existir nenhuma configuração, cria uma nova
-            return cls.objects.create(
-                device_id='default-device',
-                wifi_ssid='Ambienta-WiFi',
-                wifi_password='padrao',
-                start_hour='08:00:00',
-                end_hour='18:00:00',
-                force_on=False,
-                ml_control=False
-            )
+            with transaction.atomic():
+                config = cls.objects.first()
+                if config:
+                    for key, value in default_values.items():
+                        if key == 'device_id':  # Apenas garante que device_id está correto
+                            setattr(config, key, value)
+                    config.save(update_fields=['device_id'])
+                    return config
+                
+                return cls.objects.create(**default_values)
+                
         except Exception as e:
-            # Se algo der errado, tenta criar uma nova configuração
-            return cls.objects.create(
-                device_id='default-device',
-                wifi_ssid='Ambienta-WiFi',
-                wifi_password='padrao',
-                start_hour='08:00:00',
-                end_hour='18:00:00',
-                force_on=False,
-                ml_control=False
-            )
+            print(f"Erro ao obter/criar configuração: {str(e)}")
+            # Em caso de erro, tenta criar um objeto sem salvar no banco
+            return cls(**default_values)
 
 
 # --- SIGNAL PARA ENVIAR COMANDO MQTT ---
@@ -115,5 +115,9 @@ def send_config_to_mqtt(sender, instance, **kwargs):
     """
     Dispara a função de publicação MQTT sempre que um objeto DeviceConfig é salvo.
     """
-    if kwargs.get('created', False) or kwargs.get('update_fields'): 
-        publish_config(instance)
+    try:
+        if kwargs.get('created', False) or kwargs.get('update_fields'): 
+            publish_config(instance)
+    except Exception as e:
+        print(f"Aviso: Não foi possível publicar no MQTT: {str(e)}")
+        # Não propaga o erro para permitir o funcionamento sem MQTT
