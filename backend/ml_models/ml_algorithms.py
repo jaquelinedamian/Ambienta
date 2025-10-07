@@ -23,14 +23,35 @@ class TemperaturePredictionModel:
     """
     
     def __init__(self):
-        self.model = None
-        self.scaler = StandardScaler()  # Versão compatível com scikit-learn < 1.4
+        self._model = None
+        self._scaler = None
         self.feature_columns = [
             'hour', 'day_of_week', 'month', 
             'temp_lag_1', 'temp_lag_2', 'temp_lag_3',
             'temp_rolling_mean_3', 'temp_rolling_std_3',
             'fan_state'
         ]
+
+    @property
+    def model(self):
+        if self._model is None:
+            try:
+                saved_model = MLModel.objects.filter(
+                    model_type='temperature_prediction',
+                    is_active=True
+                ).first()
+                if saved_model:
+                    self._model = joblib.load(saved_model.model_file.path)
+            except Exception as e:
+                print(f"Erro ao carregar modelo: {str(e)}")
+                self._model = RandomForestRegressor(n_estimators=50, random_state=42)
+        return self._model
+
+    @property
+    def scaler(self):
+        if self._scaler is None:
+            self._scaler = StandardScaler()
+        return self._scaler
     
     def prepare_features(self, df):
         """
@@ -195,8 +216,32 @@ class FanOptimizationModel:
     """
     
     def __init__(self):
-        self.model = LinearRegression()  # Modelo mais simples por padrão
+        self._model = None
+        self._scaler = None
         self.temperature_threshold = 25.0
+    
+    @property
+    def model(self):
+        if self._model is None:
+            try:
+                saved_model = MLModel.objects.filter(
+                    model_type='fan_optimization',
+                    is_active=True
+                ).first()
+                if saved_model:
+                    self._model = joblib.load(saved_model.model_file.path)
+                else:
+                    self._model = LinearRegression()
+            except Exception as e:
+                print(f"Erro ao carregar modelo: {str(e)}")
+                self._model = LinearRegression()
+        return self._model
+
+    @property
+    def scaler(self):
+        if self._scaler is None:
+            self._scaler = StandardScaler()
+        return self._scaler
     
     def create_dummy_data(self):
         """
