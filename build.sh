@@ -90,4 +90,16 @@ ensure_model('anomaly_detection', 'Anomaly Detection Model', AnomalyDetectionMod
 ensure_model('fan_optimization', 'Fan Optimization Model', FanOptimizationModel)
 EOF
 
-echo "Build script completed."
+echo "Running Gunicorn with optimized settings..."
+cd backend && gunicorn \
+    --bind 0.0.0.0:$PORT \
+    --workers 2 \
+    --threads 2 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --timeout 120 \
+    --limit-request-line 8190 \
+    --limit-request-fields 100 \
+    --limit-request-field_size 8190 \
+    --log-level warning \
+    Ambienta.wsgi:application

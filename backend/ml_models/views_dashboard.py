@@ -192,37 +192,33 @@ def ml_dashboard(request):
 
     # Calcular efetividade (redução média de temperatura)
     fan_effectiveness = 0
+    
+    # Buscar apenas os logs mais recentes que têm tanto start_time quanto end_time
     recent_fan_logs = FanLog.objects.filter(
-        start_time__gte=timezone.now() - timedelta(days=7)
-    ).order_by('-start_time')[:50]
-
+        start_time__gte=timezone.now() - timedelta(days=7),
+        start_time__isnull=False,
+        end_time__isnull=False
+    ).order_by('-start_time')[:10]  # Reduzido para 10 logs mais recentes
+    
     if recent_fan_logs:
+        # Preparar listas de IDs e timestamps para busca em lote
+        log_times = [(log.id, log.start_time, log.end_time) for log in recent_fan_logs]
+        
         temperature_reductions = []
-        for log in recent_fan_logs:
-            # Pegar temperatura antes e depois
+        for log_id, start_time, end_time in log_times:
             try:
-                # Processa apenas logs com timestamps válidos
-                if log.start_time:
-                    temp_before = Reading.objects.filter(
-                        timestamp__lte=log.start_time
-                    ).order_by('-timestamp').first()
-                else:
-                    print(f"Log {log.id} não tem start_time definido")
-                    continue
-
-                if log.end_time:
-                    temp_after = Reading.objects.filter(
-                        timestamp__gte=log.end_time
-                    ).order_by('timestamp').first()
-                else:
-                    print(f"Log {log.id} não tem end_time definido")
-                    continue
+                # Buscar as temperaturas antes e depois em uma única query para cada log
+                temps = Reading.objects.filter(
+                    (Q(timestamp__lte=start_time) | Q(timestamp__gte=end_time))
+                ).order_by('timestamp')[:2]  # Limita a 2 leituras
 
             except Exception as e:
-                print(f"Erro ao buscar leituras para log {log.id}: {e}")
+                logger.error(f"Erro ao buscar leituras para log: {e}")
                 continue
 
-            if temp_before and temp_after:
+            # Se temos exatamente 2 leituras (antes e depois)
+            if len(temps) == 2:
+                temp_before, temp_after = temps
                 reduction = temp_before.temperature - temp_after.temperature
                 if reduction > 0:  # Só considerar quando houve redução
                     temperature_reductions.append(reduction)
@@ -232,55 +228,42 @@ def ml_dashboard(request):
 
     # Histórico de otimizações
     fan_optimization_history = []
-    logger.info(f"Total de logs recentes: {recent_fan_logs.count()}")
+    # Usar os mesmos logs e temperaturas já carregados para o histórico
+    log_count = len(log_times)
+    logger.info(f"Total de logs recentes: {log_count}")
     
-    for idx, log in enumerate(recent_fan_logs[:10], 1):
+    for idx, (log_id, start_time, end_time) in enumerate(log_times, 1):
         try:
-            logger.info(f"Processando log {idx}/10 (ID: {log.id})")
-            if not log.start_time:
-                logger.warning(f"Log {log.id} sem start_time")
-                continue
-                
-            # Temperaturas antes e depois do ventilador ligado
-            temp_before = Reading.objects.filter(
-                timestamp__lte=log.start_time
-            ).order_by('-timestamp').first()
+            logger.info(f"Processando log {idx}/{log_count} (ID: {log_id})")
             
-            temp_after = None
-            if log.end_time:
-                temp_after = Reading.objects.filter(
-                    timestamp__gte=log.end_time
-                ).order_by('timestamp').first()
-            elif log.duration:
-                # Se não tem end_time mas tem duration, calcula o end_time
-                temp_after = Reading.objects.filter(
-                    timestamp__gte=log.start_time + log.duration
-                ).order_by('timestamp').first()
+            # Buscar as temperaturas em uma única query
+            temps = Reading.objects.filter(
+                (Q(timestamp__lte=start_time) | Q(timestamp__gte=end_time))
+            ).order_by('timestamp')[:2]
 
-            logger.debug(f"Log {log.id}: Temp antes: {temp_before.temperature if temp_before else 'N/A'}, "
-                        f"Temp depois: {temp_after.temperature if temp_after else 'N/A'}")
-
-            # Calcular redução de temperatura
-            reduction = 0
-            if temp_before and temp_after and temp_before.temperature > temp_after.temperature:
-                reduction = temp_before.temperature - temp_after.temperature
+            if len(temps) == 2:
+                temp_before, temp_after = temps
+                reduction = max(0, temp_before.temperature - temp_after.temperature)
+                
                 logger.debug(
-                    f"Log {log.id}: Redução de temperatura: {reduction:.1f}°C "
+                    f"Log {log_id}: Redução de temperatura: {reduction:.1f}°C "
                     f"(de {temp_before.temperature:.1f}°C para {temp_after.temperature:.1f}°C)"
                 )
 
-            # Criar entrada para o histórico
-            entry = {
-                'timestamp': log.start_time,
-                'temperature': temp_before.temperature if temp_before else None,
-                'duration': log.duration.total_seconds() / 60 if log.duration else None,
-                'temperature_reduction': round(reduction, 1),
-                'end_time': log.end_time
-            }
-            fan_optimization_history.append(entry)
+                # Criar entrada para o histórico
+                entry = {
+                    'timestamp': start_time,
+                    'temperature': temp_before.temperature,
+                    'duration': (end_time - start_time).total_seconds() / 60,
+                    'temperature_reduction': round(reduction, 1),
+                    'end_time': end_time
+                }
+                fan_optimization_history.append(entry)
+            else:
+                logger.warning(f"Log {log_id}: Temperaturas insuficientes para análise")
             
         except Exception as e:
-            logger.error(f"Erro ao processar log {log.id}: {e}")
+            logger.error(f"Erro ao processar log {log_id}: {e}")
             continue
     anomalies_today = anomalies.count()
     
