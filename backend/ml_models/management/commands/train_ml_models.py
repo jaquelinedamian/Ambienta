@@ -9,7 +9,25 @@ from ml_models.ml_algorithms import (
 class Command(BaseCommand):
     help = 'Treina os modelos ML iniciais'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--skip-if-exists',
+            action='store_true',
+            help='Pula o treinamento se já existirem modelos ativos',
+        )
+
     def handle(self, *args, **options):
+        skip_if_exists = options['skip_if_exists']
+        
+        # Verifica se já existem modelos ativos
+        if skip_if_exists:
+            active_models = MLModel.objects.filter(is_active=True).count()
+            if active_models > 0:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Encontrados {active_models} modelos ativos. Pulando treinamento.')
+                )
+                return
+        
         self.stdout.write('Iniciando treinamento dos modelos ML...')
         
         try:
