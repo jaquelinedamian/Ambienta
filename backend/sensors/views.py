@@ -1,5 +1,6 @@
 # backend/sensors/views.py
 
+from backend.sensors.mqtt import publish_config
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -132,39 +133,23 @@ class FanControlAPIView(APIView):
 
 class DeviceConfigUpdateView(LoginRequiredMixin, UpdateView):
     model = DeviceConfig
-    fields = [
-        'wifi_ssid', 'wifi_password', 
-        'start_hour', 'end_hour', 
-        'force_on',
-        'ml_control'  # Adicionado campo de ML
-    ]
+    fields = ['wifi_ssid', 'wifi_password', 'start_hour', 'end_hour', 'force_on']
     template_name = 'sensors/device_config_form.html'
-    success_url = reverse_lazy('dashboard:dashboard')
-
-    def get_object(self, queryset=None):
-        """
-        Retorna ou cria a configuração padrão do sistema
-        """
-        return DeviceConfig.get_default_config()
-
-    def form_invalid(self, form):
-        """
-        Log dos erros do formulário para debug
-        """
-        print("Erros do formulário:", form.errors)
-        return super().form_invalid(form)
+    success_url = reverse_lazy('device-config')
 
     def form_valid(self, form):
-        """
-        Adiciona tratamento adicional antes de salvar
-        """
-        try:
-            # Preserva o device_id existente
-            instance = form.save(commit=False)
-            if not instance.device_id:
-                instance.device_id = 'default-device'
-            return super().form_valid(form)  # isso vai salvar a instância
-        except Exception as e:
-            print("Erro ao salvar:", str(e))
-            form.add_error(None, "Erro ao salvar configuração: " + str(e))
-            return self.form_invalid(form)
+        response = super().form_valid(form)
+        
+        # Publica configuração via MQTT
+        config = form.instance
+        publish_config(config)
+        
+        # Importante: Desliga force_on após salvar
+        if config.force_on:
+            config.force_on = False
+            config.save()
+        
+        return response
+
+    def get_object(self):
+        return DeviceConfig.get_default_config()
