@@ -109,21 +109,27 @@ class FanStateAPIView(APIView):
 # ===============================================
 @method_decorator(csrf_exempt, name='dispatch')
 class FanControlAPIView(APIView):
-    """
-    API de Força Bruta para testar a ativação imediata do ventilador.
-    O ESP8266 acessa esta API para obter o status 'force_on'.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         config = DeviceConfig.get_default_config()
+        
+        # Se force_on está ativo, vamos retorná-lo e depois desligá-lo
+        was_force_on = config.force_on
+        
+        if was_force_on:
+            # Desliga o force_on imediatamente após ser lido
+            config.force_on = False
+            config.save()
+            print(f"Force ON desativado após uso para device {config.device_id}")
 
-        # Retorna o status de force_on
         return JsonResponse({
             'device_id': config.device_id,
-            'force_on': config.force_on  # O campo booleano
+            'force_on': was_force_on,  # Retorna o valor original
+            'current_time': timezone.localtime().strftime('%H:%M:%S'),
+            'start_hour': config.start_hour.strftime('%H:%M:%S'),
+            'end_hour': config.end_hour.strftime('%H:%M:%S')
         })
-
 
 # ===============================================
 # 3. WEB VIEW (Para a Página de Configuração HTML)
