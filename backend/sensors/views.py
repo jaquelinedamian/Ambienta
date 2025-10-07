@@ -1,6 +1,5 @@
 # backend/sensors/views.py
 
-from backend.sensors.mqtt import publish_config
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,6 +17,7 @@ from django.utils.decorators import method_decorator
 from datetime import time # <-- IMPORT NECESSÁRIO
 from .serializers import ReadingSerializer, FanStateSerializer
 from .models import Reading, FanState, FanLog, DeviceConfig
+from .mqtt import publish_config
 
 
 # ===============================================
