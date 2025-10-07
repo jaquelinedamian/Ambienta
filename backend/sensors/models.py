@@ -76,36 +76,27 @@ class DeviceConfig(models.Model):
     @classmethod
     def get_default_config(cls):
         """Retorna ou cria a configuração padrão do sistema"""
-        from django.db import transaction
-        
-        default_values = {
-            'device_id': 'default-device',
-            'wifi_ssid': 'Ambienta-WiFi',
-            'wifi_password': 'padrao',
-            'start_hour': '08:00:00',
-            'end_hour': '18:00:00',
-            'force_on': False,
-            'ml_control': False,
-            'ml_duration': 0,
-            'ml_start_time': None
-        }
-        
         try:
-            with transaction.atomic():
-                config = cls.objects.first()
-                if config:
-                    for key, value in default_values.items():
-                        if key == 'device_id':  # Apenas garante que device_id está correto
-                            setattr(config, key, value)
-                    config.save(update_fields=['device_id'])
-                    return config
-                
-                return cls.objects.create(**default_values)
-                
+            # Primeiro tenta pegar qualquer configuração existente
+            config = cls.objects.first()
+            if config:
+                return config  # Retorna a configuração existente sem modificar
+            
+            # Se não existir, cria uma nova com valores padrão
+            return cls.objects.create(
+                device_id='default-device',
+                wifi_ssid='Ambienta-WiFi',
+                wifi_password='padrao',
+                start_hour='08:00:00',
+                end_hour='18:00:00',
+                force_on=False,
+                ml_control=False,
+                ml_duration=0,
+                ml_start_time=None
+            )
         except Exception as e:
             print(f"Erro ao obter/criar configuração: {str(e)}")
-            # Em caso de erro, tenta criar um objeto sem salvar no banco
-            return cls(**default_values)
+            return None  # Retorna None em caso de erro para evitar criar objeto inválido
 
 
 # --- SIGNAL PARA ENVIAR COMANDO MQTT ---
