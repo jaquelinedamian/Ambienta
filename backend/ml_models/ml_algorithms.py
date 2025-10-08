@@ -649,32 +649,7 @@ class AnomalyDetectionModel(BaseMLModel):
 
 def train_all_models(force_retrain=False):
     """
-    Carrega todos os modelos ML pré-treinados
+    Função mantida para compatibilidade, mas desativada em produção
     """
-    results = {}
-    
-    # Modelo de predição de temperatura
-    try:
-        temp_model = TemperaturePredictionModel()
-        results['temperature_prediction'] = {'status': 'loaded'}
-    except Exception as e:
-        print(f"Erro ao carregar modelo de temperatura: {str(e)}")
-        results['temperature_prediction'] = {'error': str(e)}
-    
-    # Modelo de otimização do ventilador
-    try:
-        fan_model = FanOptimizationModel()
-        results['fan_optimization'] = {'status': 'loaded'}
-    except Exception as e:
-        print(f"Erro ao carregar modelo de ventilador: {str(e)}")
-        results['fan_optimization'] = {'error': str(e)}
-    
-    # Modelo de detecção de anomalias
-    try:
-        anomaly_model = AnomalyDetectionModel()
-        results['anomaly_detection'] = {'status': 'loaded'}
-    except Exception as e:
-        print(f"Erro ao carregar modelo de anomalias: {str(e)}")
-        results['anomaly_detection'] = {'error': str(e)}
-    
-    return results
+    print("Treinamento desativado em produção - modelos já estão pré-treinados")
+    return {}

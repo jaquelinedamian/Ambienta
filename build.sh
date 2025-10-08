@@ -50,66 +50,16 @@ python manage.py makemigrations --merge --noinput
 echo "Running migrations..."
 python manage.py migrate
 
-echo "Training ML models..."
+echo "Verificando modelos ML..."
 python manage.py shell << EOF
 from ml_models.models import MLModel
-from ml_models.ml_algorithms import TemperaturePredictionModel, AnomalyDetectionModel, FanOptimizationModel
-from django.utils import timezone
 
-def ensure_model(model_type, name, model_class):
-    try:
-        model, created = MLModel.objects.get_or_create(
-            model_type=model_type,
-            defaults={
-                'name': name,
-                'version': '1.0',
-                'is_active': True
-            }
-        )
-        
-        if created or not model.model_data:
-            print(f"Training {name}...")
-            ml_instance = model_class()
-            try:
-                metrics = ml_instance.train()
-                if metrics:  # Se o treinamento foi bem sucedido
-                    model.save_model(ml_instance.model)
-                    model.accuracy = metrics.get('r2', metrics.get('accuracy'))
-                    model.mse = metrics.get('mse')
-                    model.mae = metrics.get('mae')
-                    model.r2_score = metrics.get('r2')
-                    model.last_trained = timezone.now()
-                    model.save()
-                    print(f"{name} trained and saved successfully")
-                else:
-                    print(f"Warning: {name} training returned no metrics")
-            except Exception as e:
-                print(f"Warning: Error training {name}: {str(e)}")
-                if not model.model_data:  # Se não temos modelo salvo
-                    model.is_active = False  # Desativa o modelo
-                    model.save()
-        else:
-            print(f"{name} already exists and has model data")
-    except Exception as e:
-        print(f"Error ensuring model {name}: {str(e)}")
-        # Não deixa a exceção se propagar para não falhar o deploy
-
-# Train all models
-ensure_model('temperature_prediction', 'Temperature Prediction Model', TemperaturePredictionModel)
-ensure_model('anomaly_detection', 'Anomaly Detection Model', AnomalyDetectionModel)
-ensure_model('fan_optimization', 'Fan Optimization Model', FanOptimizationModel)
+# Apenas verifica se os modelos existem
+models = MLModel.objects.all()
+print(f"{models.count()} modelos encontrados")
+for model in models:
+    status = "com dados" if model.model_data else "sem dados"
+    print(f"- {model.name}: {status}")
 EOF
 
-echo "Running Gunicorn with optimized settings..."
-gunicorn \
-    --bind 0.0.0.0:$PORT \
-    --workers 2 \
-    --threads 2 \
-    --max-requests 1000 \
-    --max-requests-jitter 50 \
-    --timeout 120 \
-    --limit-request-line 8190 \
-    --limit-request-fields 100 \
-    --limit-request-field_size 8190 \
-    --log-level warning \
-    Ambienta.wsgi:application
+echo "Running Gunicorn..."
