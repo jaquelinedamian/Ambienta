@@ -115,7 +115,14 @@ class TemperaturePredictionModel(BaseMLModel):
     
     def train(self, days_back=30, test_size=0.2, force_retrain=False):
         """
-        Treina o modelo de predição de temperatura com cache e otimizações
+        Desativado em produção - use o script de treinamento separado
+        """
+        print("Treinamento desativado em produção")
+        return False
+        
+    def _train_legacy(self, days_back=30, test_size=0.2, force_retrain=False):
+        """
+        Método legado mantido para referência e desenvolvimento
         """
         # Verificar cache
         if not force_retrain and model_cache.get('temperature_prediction'):
@@ -349,7 +356,14 @@ class FanOptimizationModel(BaseMLModel):
     
     def train(self, days_back=30, force_retrain=False):
         """
-        Treina modelo de otimização do ventilador com cache e otimizações
+        Desativado em produção - use o script de treinamento separado
+        """
+        print("Treinamento desativado em produção")
+        return False
+        
+    def _train_legacy(self, days_back=30, force_retrain=False):
+        """
+        Método legado mantido para referência e desenvolvimento
         """
         features = ['temp_before', 'duration_minutes', 'hour', 'day_of_week']
         
@@ -511,7 +525,14 @@ class AnomalyDetectionModel(BaseMLModel):
     
     def train(self, days_back=30, force_retrain=False):
         """
-        Treina modelo de detecção de anomalias com cache e otimizações
+        Desativado em produção - use o script de treinamento separado
+        """
+        print("Treinamento desativado em produção")
+        return False
+        
+    def _train_legacy(self, days_back=30, force_retrain=False):
+        """
+        Método legado mantido para referência e desenvolvimento
         """
         # Verificar cache
         if not force_retrain and model_cache.get('anomaly_detection'):
@@ -628,39 +649,32 @@ class AnomalyDetectionModel(BaseMLModel):
 
 def train_all_models(force_retrain=False):
     """
-    Treina todos os modelos de ML disponíveis com sistema de cache
+    Carrega todos os modelos ML pré-treinados
     """
     results = {}
     
     # Modelo de predição de temperatura
     try:
         temp_model = TemperaturePredictionModel()
-        temp_metrics = temp_model.train(force_retrain=force_retrain)
-        results['temperature_prediction'] = temp_metrics
+        results['temperature_prediction'] = {'status': 'loaded'}
     except Exception as e:
-        print(f"Erro ao treinar modelo de temperatura: {str(e)}")
+        print(f"Erro ao carregar modelo de temperatura: {str(e)}")
         results['temperature_prediction'] = {'error': str(e)}
     
     # Modelo de otimização do ventilador
     try:
         fan_model = FanOptimizationModel()
-        fan_metrics = fan_model.train(force_retrain=force_retrain)
-        results['fan_optimization'] = fan_metrics
+        results['fan_optimization'] = {'status': 'loaded'}
     except Exception as e:
-        print(f"Erro ao treinar modelo de ventilador: {str(e)}")
+        print(f"Erro ao carregar modelo de ventilador: {str(e)}")
         results['fan_optimization'] = {'error': str(e)}
     
     # Modelo de detecção de anomalias
     try:
         anomaly_model = AnomalyDetectionModel()
-        anomaly_metrics = anomaly_model.train(force_retrain=force_retrain)
-        results['anomaly_detection'] = anomaly_metrics
+        results['anomaly_detection'] = {'status': 'loaded'}
     except Exception as e:
-        print(f"Erro ao treinar modelo de anomalias: {str(e)}")
+        print(f"Erro ao carregar modelo de anomalias: {str(e)}")
         results['anomaly_detection'] = {'error': str(e)}
-        
-    # Limpar cache antigo se necessário
-    if force_retrain:
-        model_cache.clear()
     
     return results
