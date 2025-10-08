@@ -1,11 +1,14 @@
 # backend/ml_models/cache.py
 
 import threading
+import joblib
 from datetime import datetime, timedelta
+from django.conf import settings
+import os
 
 class MLModelCache:
     """
-    Cache thread-safe para modelos ML
+    Cache thread-safe para modelos ML com lazy loading
     """
     _instance = None
     _lock = threading.Lock()
@@ -23,9 +26,12 @@ class MLModelCache:
         self._last_access = {}
         self._lock = threading.Lock()
         self._ttl = timedelta(hours=1)  # Cache expira em 1 hora
+        self.enable_lazy_loading = False  # Habilitado no AppConfig.ready()
     
     def get(self, key):
-        """Obtém um modelo do cache"""
+        """
+        Obtém um modelo do cache com lazy loading
+        """
         with self._lock:
             if key in self._cache:
                 now = datetime.now()
@@ -36,6 +42,23 @@ class MLModelCache:
                     # Cache expirou
                     del self._cache[key]
                     del self._last_access[key]
+            
+            # Se lazy loading estiver ativado, tenta carregar do disco
+            if self.enable_lazy_loading:
+                try:
+                    from .models import MLModel
+                    model_obj = MLModel.objects.filter(
+                        model_type=key,
+                        is_active=True
+                    ).first()
+                    
+                    if model_obj and model_obj.model_file:
+                        model = joblib.load(model_obj.model_file.path)
+                        self.set(key, model)
+                        return model
+                except Exception as e:
+                    print(f"Erro no lazy loading do modelo {key}: {str(e)}")
+                    
             return None
     
     def set(self, key, value):
