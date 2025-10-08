@@ -48,6 +48,8 @@ class DeviceConfig(models.Model):
     
     wifi_ssid = models.CharField(max_length=100, default='NomeDaSuaRede')
     wifi_password = models.CharField(max_length=100, default='SuaSenhaAqui')
+    temperature_limit = models.FloatField(default=25.0)  # Limite dinâmico de temperatura
+    last_seen = models.DateTimeField(null=True, blank=True)  # Última vez que o dispositivo se comunicou
     
     start_hour = models.TimeField(default='08:00:00')
     end_hour = models.TimeField(default='18:00:00')

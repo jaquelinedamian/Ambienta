@@ -20,6 +20,48 @@ class MLIntegrationService:
     """
     
     @staticmethod
+    def get_optimized_temperature_limit(current_temp):
+        """
+        Calcula o limite de temperatura otimizado baseado nas condições atuais
+        
+        Args:
+            current_temp: Temperatura atual
+            
+        Returns:
+            float: Limite de temperatura otimizado ou None se não puder calcular
+        """
+        try:
+            fan_model = FanOptimizationModel()
+            # Carregar modelo ativo
+            ml_model = MLModel.objects.filter(
+                model_type='fan_optimization',
+                is_active=True
+            ).first()
+            
+            if not ml_model:
+                return None
+                
+            loaded_model = ml_model.load_model()
+            if loaded_model:
+                fan_model.model = loaded_model
+                
+                # Calcular limite dinâmico
+                base_limit = 25.0  # Limite base
+                
+                # Ajustar limite baseado na eficiência do resfriamento
+                efficiency = fan_model.estimate_cooling_efficiency(current_temp)
+                if efficiency:
+                    # Ajusta o limite entre 23°C e 27°C baseado na eficiência
+                    dynamic_limit = base_limit - (efficiency * 2) + 2
+                    return max(23.0, min(27.0, dynamic_limit))
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erro ao calcular limite de temperatura: {str(e)}")
+            return None
+    
+    @staticmethod
     def process_new_reading(reading):
         """
         Processa uma nova leitura de sensor com ML
@@ -139,7 +181,26 @@ class MLIntegrationService:
         """
         try:
             # Obter configuração atual
-            config = DeviceConfig.objects.get(device_id='default-device')
+            try:
+                config = DeviceConfig.objects.get(device_id='default-device')
+            except DeviceConfig.DoesNotExist:
+                logger.warning("Configuração não encontrada. Criando padrão...")
+                config = DeviceConfig.objects.create(
+                    device_id='default-device',
+                    ml_control=True,
+                    start_hour=timezone.now().replace(hour=8, minute=0),
+                    end_hour=timezone.now().replace(hour=22, minute=0)
+                )
+            
+            # Verificar se ML Control está ativado
+            if not config.ml_control:
+                logger.info("ML Control desativado nas configurações")
+                return {
+                    'recommended_duration_minutes': 0,
+                    'should_turn_on': False,
+                    'method': 'ml_disabled',
+                    'message': 'Controle ML desativado nas configurações'
+                }
             
             # Verificar se está dentro do horário permitido
             current_time = timezone.localtime().time()
@@ -147,7 +208,7 @@ class MLIntegrationService:
             end_time = config.end_hour
             
             # Se o horário atual está fora do período permitido, não liga
-            if start_time < end_time:  # Período normal (ex: 8:00 - 18:00)
+            if start_time < end_time:  # Período normal (ex: 8:00 - 22:00)
                 if current_time < start_time or current_time > end_time:
                     return {
                         'recommended_duration_minutes': 0,

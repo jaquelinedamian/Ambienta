@@ -11,12 +11,15 @@ from sklearn.pipeline import Pipeline
 from datetime import datetime, timedelta
 import joblib
 import os
+import logging
 from django.utils import timezone
 from django.db import models
 from sensors.models import Reading, FanState, FanLog
 from .models import MLModel, MLPrediction, TrainingSession, ModelPerformanceMetric
 from .base import BaseMLModel
 from .cache import model_cache
+
+logger = logging.getLogger(__name__)
 
 
 class TemperaturePredictionModel(BaseMLModel):
@@ -235,13 +238,18 @@ class FanOptimizationModel(BaseMLModel):
     def __init__(self):
         super().__init__(model_type='fan_optimization')
         self._scaler = None
-        self.temperature_threshold = 25.0
+        self.temperature_threshold = 24.0  # Temperatura mais confortável
         
     def get_default_model(self):
         """
         Retorna um modelo padrão quando nenhum modelo salvo está disponível
         """
-        return LinearRegression()
+        # Usar RandomForest para melhor generalização
+        return RandomForestRegressor(
+            n_estimators=50,
+            max_depth=5,
+            random_state=42
+        )
 
     @property
     def scaler(self):
@@ -427,27 +435,20 @@ class FanOptimizationModel(BaseMLModel):
     
     def optimize_fan_duration(self, current_temp, current_hour):
         """
-        Sugere duração otimizada para ligar o ventilador
+        Sugere duração otimizada para ligar o ventilador usando modelo ML ou regras
         """
-        # Configurações padrão
-        default_duration = 15
-        max_duration = 30
-        
-        # Regra básica: não ligar se temperatura abaixo do limiar
         if current_temp <= self.temperature_threshold:
             return 0
-        
+            
         try:
-            # Se não tem modelo, usa regra simples
             if self.model is None:
-                return max(5, min(max_duration, (current_temp - self.temperature_threshold) * 5))
+                return self._simple_rule(current_temp)
+                
+            # Mais opções de duração
+            durations = [5, 10, 15, 20, 25, 30, 35, 40]
+            best_duration = None
+            best_efficiency = float('-inf')  # Começar com -infinito
             
-            # Lista reduzida de durações para otimização
-            durations = [5, 10, 15, 20, 30]
-            best_duration = default_duration
-            best_efficiency = 0
-            
-            # Base features para predição
             features = {
                 'temp_before': current_temp,
                 'hour': current_hour,
@@ -463,39 +464,67 @@ class FanOptimizationModel(BaseMLModel):
                     }])
                     
                     predicted_efficiency = float(self.model.predict(X_pred)[0])
-                    adjusted_efficiency = predicted_efficiency * (1 - (duration / 120))
                     
-                    if adjusted_efficiency > best_efficiency:
-                        best_efficiency = adjusted_efficiency
+                    # Nova fórmula de eficiência que equilibra resfriamento e energia
+                    temp_reduction_weight = 2.0  # Peso para redução de temperatura
+                    energy_penalty = duration / 60  # Penalidade por consumo de energia
+                    
+                    # Score que favorece maior redução de temperatura com menor tempo
+                    efficiency_score = (predicted_efficiency * temp_reduction_weight) - energy_penalty
+                    
+                    if efficiency_score > best_efficiency:
+                        best_efficiency = efficiency_score
                         best_duration = duration
-                except:
+                except Exception as e:
+                    logger.warning(f"Erro ao testar duração {duration}: {str(e)}")
                     continue
             
-            return best_duration
+            if best_duration is not None:
+                return best_duration
+                
+            return self._simple_rule(current_temp)
             
         except Exception as e:
-            print(f"Erro na otimização: {str(e)}")
-            # Fallback para regra simples em caso de erro
-            return max(5, min(max_duration, (current_temp - self.temperature_threshold) * 5))
+            logger.error(f"Erro na otimização: {str(e)}")
+            return self._simple_rule(current_temp)
+    
+    def _simple_rule(self, current_temp):
+        """
+        Regra simples e conservadora baseada na temperatura
+        """
+        if current_temp <= self.temperature_threshold:
+            return 0
+        elif current_temp <= 25:
+            return 10  # 10 minutos para temperaturas moderadas
+        elif current_temp <= 27:
+            return 20  # 20 minutos para temperaturas altas
+        else:
+            return 30  # 30 minutos para temperaturas muito altas
 
 
 class AnomalyDetectionModel(BaseMLModel):
     """
-    Modelo para detecção de anomalias nos dados dos sensores
+    Modelo para detecção de anomalias nos dados dos sensores com configurações otimizadas
     """
     
     def __init__(self):
         super().__init__(model_type='anomaly_detection')
         self._scaler = StandardScaler()
         self.feature_names = ['temperature', 'hour', 'temp_diff', 'temp_deviation']
-        self.normal_range = {'min': 15, 'max': 35}  # Faixa normal de temperatura
+        self.normal_range = {'min': 18, 'max': 32}  # Faixa mais realista
         self.is_fitted = False
         
     def get_default_model(self):
         """
         Retorna um modelo padrão quando nenhum modelo salvo está disponível
         """
-        return IsolationForest(contamination=0.01, random_state=42)
+        return IsolationForest(
+            contamination=0.05,  # 5% de anomalias esperadas
+            n_estimators=100,    # Mais árvores para melhor precisão
+            max_samples='auto',  # Adapta automaticamente ao tamanho dos dados
+            random_state=42,
+            n_jobs=-1            # Usa todos os cores disponíveis
+        )
     
     def get_training_data(self, days_back=30):
         """
