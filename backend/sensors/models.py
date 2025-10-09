@@ -51,6 +51,29 @@ class DeviceConfig(models.Model):
     temperature_limit = models.FloatField(default=25.0)  # Limite dinâmico de temperatura
     last_seen = models.DateTimeField(null=True, blank=True)  # Última vez que o dispositivo se comunicou
     
+    @property
+    def is_online(self):
+        """
+        Verifica se o dispositivo está online (última comunicação nos últimos 2 minutos)
+        """
+        if not self.last_seen:
+            return False
+            
+        from django.utils import timezone
+        time_since_last_seen = timezone.now() - self.last_seen
+        return time_since_last_seen.total_seconds() <= 120  # 2 minutos
+    
+    @classmethod
+    def get_default_config(cls):
+        """
+        Retorna ou cria a configuração padrão
+        """
+        config, created = cls.objects.get_or_create(device_id='default-device')
+        if created:
+            config.last_seen = None
+            config.save()
+        return config
+    
     start_hour = models.TimeField(default='08:00:00')
     end_hour = models.TimeField(default='18:00:00')
     
