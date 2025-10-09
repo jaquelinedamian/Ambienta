@@ -28,19 +28,43 @@ class ReadingCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # Log dos dados recebidos
+        print("\n=== NOVA LEITURA RECEBIDA ===")
+        print(f"Data/Hora: {timezone.now()}")
+        print(f"Dados recebidos (raw): {request.data}")
+        print(f"Headers: {request.headers}")
+        
         serializer = ReadingSerializer(data=request.data)
         if serializer.is_valid():
+            print(f"Dados validados: {serializer.validated_data}")
+            
             # Atualiza o último contato com o dispositivo
             config = DeviceConfig.get_default_config()
             config.last_seen = timezone.now()
             config.save()
+            print(f"Last seen atualizado para: {config.last_seen}")
             
-            serializer.save()
+            # Salva a leitura
+            reading = serializer.save()
+            print(f"Leitura salva com ID: {reading.id}")
+            
+            # Atualiza estado do ventilador
             self.check_and_update_fan_state(serializer.validated_data['temperature'])
+            
+            # Log da última leitura salva
+            last_readings = Reading.objects.order_by('-timestamp')[:5]
+            print("\nÚltimas 5 leituras:")
+            for r in last_readings:
+                print(f"ID: {r.id} | Temp: {r.temperature}°C | Data: {r.timestamp}")
+            
             return Response(
-                {"message": "Dados recebidos com sucesso!"},
+                {"message": "Dados recebidos com sucesso!", "reading_id": reading.id},
                 status=status.HTTP_201_CREATED
             )
+        
+        # Log de erro na validação
+        print("\nERRO na validação dos dados:")
+        print(f"Erros: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def check_and_update_fan_state(self, current_temperature):
