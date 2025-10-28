@@ -28,24 +28,55 @@ class ReadingCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # Log dos dados recebidos
+        print("\n=== NOVA LEITURA RECEBIDA ===")
+        print(f"Data/Hora: {timezone.now()}")
+        print(f"Dados recebidos (raw): {request.data}")
+        print(f"Headers: {request.headers}")
+        
         serializer = ReadingSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            print(f"Dados validados: {serializer.validated_data}")
+            
+            # Atualiza o último contato com o dispositivo
+            config = DeviceConfig.get_default_config()
+            config.last_seen = timezone.now()
+            config.save()
+            print(f"Last seen atualizado para: {config.last_seen}")
+            
+            # Salva a leitura
+            reading = serializer.save()
+            print(f"Leitura salva com ID: {reading.id}")
+            
+            # Atualiza estado do ventilador
             self.check_and_update_fan_state(serializer.validated_data['temperature'])
+            
+            # Log da última leitura salva
+            last_readings = Reading.objects.order_by('-timestamp')[:5]
+            print("\nÚltimas 5 leituras:")
+            for r in last_readings:
+                print(f"ID: {r.id} | Temp: {r.temperature}°C | Data: {r.timestamp}")
+            
             return Response(
-                {"message": "Dados recebidos com sucesso!"},
+                {"message": "Dados recebidos com sucesso!", "reading_id": reading.id},
                 status=status.HTTP_201_CREATED
             )
+        
+        # Log de erro na validação
+        print("\nERRO na validação dos dados:")
+        print(f"Erros: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def check_and_update_fan_state(self, current_temperature):
         fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
 
-        # OBTÉM A CONFIGURAÇÃO ATUAL (onde o force_on está)
+        # Obtém a configuração atual
         config = DeviceConfig.get_default_config()
 
-        # Ajuste: Use uma variável de limite, idealmente configurável no DeviceConfig
-        temperature_limit = 25.0
+        # Obtém o limite de temperatura otimizado do modelo ML ou usa o padrão do config
+        from ml_models.integrations import MLIntegrationService
+        optimized_temp = MLIntegrationService.get_optimized_temperature_limit(current_temperature)
+        temperature_limit = optimized_temp if optimized_temp else config.temperature_limit
 
         # 1. PRIORITY CHECK: Se o modo manual estiver ATIVO, o Django NÃO PODE desligar.
         if config.force_on:
@@ -87,13 +118,60 @@ class ReadingListAPIView(generics.ListAPIView):
     ordering_fields = ['id', 'timestamp']
 
 
+class FanControlAPIView(APIView):
+    """API para o ESP8266 obter configurações de controle"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        # Obtém configurações atuais
+        config = DeviceConfig.get_default_config()
+        fan_state = FanState.objects.get_or_create(id=1)[0]
+        
+        # Obtém última leitura de temperatura
+        last_reading = Reading.objects.order_by('-timestamp').first()
+        current_temp = last_reading.temperature if last_reading else None
+        
+        # Obtém limite otimizado se possível
+        from ml_models.integrations import MLIntegrationService
+        optimized_temp = None
+        if current_temp:
+            optimized_temp = MLIntegrationService.get_optimized_temperature_limit(current_temp)
+        
+        # Prepara resposta
+        response_data = {
+            'force_on': config.force_on,
+            'temperature_limit': optimized_temp if optimized_temp else config.temperature_limit,
+            'start_hour': config.start_hour,
+            'end_hour': config.end_hour
+        }
+        
+        return Response(response_data)
+
 class FanStateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
-        serializer = FanStateSerializer(fan_state)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        config = DeviceConfig.get_default_config()
+        
+        # Verifica se o dispositivo está online (última comunicação nos últimos 2 minutos)
+        is_online = False
+        if config.last_seen:
+            time_since_last_seen = timezone.now() - config.last_seen
+            is_online = time_since_last_seen.total_seconds() <= 120  # 2 minutos
+        
+        # Se o dispositivo estiver offline, considera o ventilador desligado
+        if not is_online:
+            fan_state.state = False
+            fan_state.save()
+            
+        # Adiciona informação de online/offline à resposta
+        response_data = {
+            'state': fan_state.state,
+            'is_online': is_online,
+            'last_seen': config.last_seen
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
         fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
@@ -123,7 +201,14 @@ class FanControlAPIView(APIView):
             'device_id': config.device_id,
             'force_on': config.force_on  # O campo booleano
         })
-
+    
+    def post(self, request, *args, **kwargs):
+        fan_state, created = FanState.objects.get_or_create(id=1, defaults={'state': False})
+        serializer = FanStateSerializer(fan_state, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # ===============================================
 # 3. WEB VIEW (Para a Página de Configuração HTML)

@@ -10,7 +10,12 @@ class MlModelsConfig(AppConfig):
     
     def ready(self):
         """
-        Importa e inicializa os signals do app
+        Importa signals
         """
-        import ml_models.signals  # importação explícita
-        print("ML Models signals carregados!")
+        import os
+        import sys
+        
+        # Evita múltiplas inicializações
+        if os.environ.get('RUN_MAIN') or 'gunicorn' in sys.modules:
+            import ml_models.signals
+            print("ML Models signals carregados!")

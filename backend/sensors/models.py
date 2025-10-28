@@ -48,6 +48,31 @@ class DeviceConfig(models.Model):
     
     wifi_ssid = models.CharField(max_length=100, default='NomeDaSuaRede')
     wifi_password = models.CharField(max_length=100, default='SuaSenhaAqui')
+    temperature_limit = models.FloatField(default=25.0)  # Limite dinâmico de temperatura
+    last_seen = models.DateTimeField(null=True, blank=True)  # Última vez que o dispositivo se comunicou
+    
+    @property
+    def is_online(self):
+        """
+        Verifica se o dispositivo está online (última comunicação nos últimos 2 minutos)
+        """
+        if not self.last_seen:
+            return False
+            
+        from django.utils import timezone
+        time_since_last_seen = timezone.now() - self.last_seen
+        return time_since_last_seen.total_seconds() <= 120  # 2 minutos
+    
+    @classmethod
+    def get_default_config(cls):
+        """
+        Retorna ou cria a configuração padrão
+        """
+        config, created = cls.objects.get_or_create(device_id='default-device')
+        if created:
+            config.last_seen = None
+            config.save()
+        return config
     
     start_hour = models.TimeField(default='08:00:00')
     end_hour = models.TimeField(default='18:00:00')
@@ -72,6 +97,34 @@ class DeviceConfig(models.Model):
 
     def __str__(self):
         return f"Configuração do Dispositivo {self.device_id}"
+    
+    def save(self, *args, **kwargs):
+        # Garante que os horários estão no formato correto antes de salvar
+        if isinstance(self.start_hour, str):
+            from datetime import datetime
+            try:
+                time_obj = datetime.strptime(self.start_hour, '%H:%M:%S').time()
+                self.start_hour = time_obj
+            except ValueError:
+                try:
+                    time_obj = datetime.strptime(self.start_hour, '%H:%M').time()
+                    self.start_hour = time_obj
+                except ValueError:
+                    pass
+                
+        if isinstance(self.end_hour, str):
+            from datetime import datetime
+            try:
+                time_obj = datetime.strptime(self.end_hour, '%H:%M:%S').time()
+                self.end_hour = time_obj
+            except ValueError:
+                try:
+                    time_obj = datetime.strptime(self.end_hour, '%H:%M').time()
+                    self.end_hour = time_obj
+                except ValueError:
+                    pass
+        
+        super().save(*args, **kwargs)
 
     @classmethod
     def get_default_config(cls):
@@ -80,12 +133,9 @@ class DeviceConfig(models.Model):
             # Primeiro tenta pegar qualquer configuração existente
             config = cls.objects.first()
             if config:
-                # Atualiza para os valores padrão se necessário
-                config.device_id = 'default-device'
-                config.save()
-                return config
+                return config  # Retorna a configuração existente sem modificar
             
-            # Se não existir nenhuma configuração, cria uma nova
+            # Se não existir, cria uma nova com valores padrão
             return cls.objects.create(
                 device_id='default-device',
                 wifi_ssid='Ambienta-WiFi',
@@ -93,19 +143,13 @@ class DeviceConfig(models.Model):
                 start_hour='08:00:00',
                 end_hour='18:00:00',
                 force_on=False,
-                ml_control=False
+                ml_control=False,
+                ml_duration=0,
+                ml_start_time=None
             )
         except Exception as e:
-            # Se algo der errado, tenta criar uma nova configuração
-            return cls.objects.create(
-                device_id='default-device',
-                wifi_ssid='Ambienta-WiFi',
-                wifi_password='padrao',
-                start_hour='08:00:00',
-                end_hour='18:00:00',
-                force_on=False,
-                ml_control=False
-            )
+            print(f"Erro ao obter/criar configuração: {str(e)}")
+            return None  # Retorna None em caso de erro para evitar criar objeto inválido
 
 
 # --- SIGNAL PARA ENVIAR COMANDO MQTT ---
@@ -115,5 +159,10 @@ def send_config_to_mqtt(sender, instance, **kwargs):
     """
     Dispara a função de publicação MQTT sempre que um objeto DeviceConfig é salvo.
     """
-    if kwargs.get('created', False) or kwargs.get('update_fields'): 
+    try:
+        # Sempre publica quando houver qualquer salvamento
         publish_config(instance)
+        print(f"MQTT Config Update - Start: {instance.start_hour}, End: {instance.end_hour}")
+    except Exception as e:
+        print(f"Aviso: Não foi possível publicar no MQTT: {str(e)}")
+        # Não propaga o erro para permitir o funcionamento sem MQTT

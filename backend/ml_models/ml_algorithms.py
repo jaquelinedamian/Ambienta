@@ -11,26 +11,43 @@ from sklearn.pipeline import Pipeline
 from datetime import datetime, timedelta
 import joblib
 import os
+import logging
 from django.utils import timezone
 from django.db import models
 from sensors.models import Reading, FanState, FanLog
 from .models import MLModel, MLPrediction, TrainingSession, ModelPerformanceMetric
+from .base import BaseMLModel
+from .cache import model_cache
+
+logger = logging.getLogger(__name__)
 
 
-class TemperaturePredictionModel:
+class TemperaturePredictionModel(BaseMLModel):
     """
     Modelo para predição de temperatura baseado em dados históricos
     """
     
     def __init__(self):
-        self.model = None
-        self.scaler = StandardScaler(with_feature_names=False)  # Desabilita feature names no scikit-learn 1.4+
+        super().__init__(model_type='temperature_prediction')
+        self._scaler = None
         self.feature_columns = [
             'hour', 'day_of_week', 'month', 
             'temp_lag_1', 'temp_lag_2', 'temp_lag_3',
             'temp_rolling_mean_3', 'temp_rolling_std_3',
             'fan_state'
         ]
+
+    @property
+    def scaler(self):
+        if self._scaler is None:
+            self._scaler = StandardScaler()
+        return self._scaler
+        
+    def get_default_model(self):
+        """
+        Retorna um modelo padrão quando nenhum modelo salvo está disponível
+        """
+        return RandomForestRegressor(n_estimators=50, random_state=42)
     
     def prepare_features(self, df):
         """
@@ -99,57 +116,81 @@ class TemperaturePredictionModel:
         
         return df
     
-    def train(self, days_back=30, test_size=0.2):
+    def train(self, days_back=30, test_size=0.2, force_retrain=False):
         """
-        Treina o modelo de predição de temperatura
+        Desativado em produção - use o script de treinamento separado
         """
-        # Obter dados
-        df = self.get_training_data(days_back)
+        print("Treinamento desativado em produção")
+        return False
         
-        # Preparar features
-        df = self.prepare_features(df)
-        
-        # Remover linhas com NaN (devido aos lags)
-        df = df.dropna()
-        
-        if len(df) < 10:
-            raise ValueError("Dados insuficientes após limpeza (mínimo 10 amostras)")
-        
-        # Separar features e target
-        X = df[self.feature_columns]
-        y = df['temperature']
-        
-        # Split treino/teste
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=42, shuffle=False
-        )
-        
-        # Criar pipeline com normalização
-        self.model = Pipeline([
-            ('scaler', StandardScaler()),
-            ('regressor', RandomForestRegressor(
-                n_estimators=100,
-                max_depth=10,
-                random_state=42,
-                n_jobs=-1
-            ))
-        ])
-        
-        # Treinar modelo
-        self.model.fit(X_train, y_train)
-        
-        # Avaliar
-        y_pred = self.model.predict(X_test)
-        
-        metrics = {
-            'mse': float(mean_squared_error(y_test, y_pred)),
-            'mae': float(mean_absolute_error(y_test, y_pred)),
-            'r2': float(r2_score(y_test, y_pred)),
-            'training_samples': int(len(X_train)),
-            'test_samples': int(len(X_test))
-        }
-        
-        return metrics
+    def _train_legacy(self, days_back=30, test_size=0.2, force_retrain=False):
+        """
+        Método legado mantido para referência e desenvolvimento
+        """
+        # Verificar cache
+        if not force_retrain and model_cache.get('temperature_prediction'):
+            print("Usando modelo em cache")
+            self._model = model_cache.get('temperature_prediction')
+            return True
+
+        try:
+            # Obter dados
+            df = self.get_training_data(days_back)
+            
+            # Preparar features
+            df = self.prepare_features(df)
+            
+            # Remover linhas com NaN (devido aos lags)
+            df = df.dropna()
+            
+            if len(df) < 10:
+                raise ValueError("Dados insuficientes após limpeza (mínimo 10 amostras)")
+            
+            # Separar features e target
+            X = df[self.feature_columns]
+            y = df['temperature']
+            
+            # Split treino/teste
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=42, shuffle=False
+            )
+            
+            # Criar pipeline com normalização
+            model = Pipeline([
+                ('scaler', StandardScaler()),
+                ('regressor', RandomForestRegressor(
+                    n_estimators=100,
+                    max_depth=10,
+                    random_state=42,
+                    n_jobs=-1
+                ))
+            ])
+            
+            # Treinar modelo
+            model.fit(X_train, y_train)
+            
+            # Avaliar
+            y_pred = model.predict(X_test)
+            
+            metrics = {
+                'mse': float(mean_squared_error(y_test, y_pred)),
+                'mae': float(mean_absolute_error(y_test, y_pred)),
+                'r2': float(r2_score(y_test, y_pred)),
+                'training_samples': int(len(X_train)),
+                'test_samples': int(len(X_test))
+            }
+            
+            # Salvar modelo no cache e no disco
+            self._model = model
+            model_cache.set('temperature_prediction', model)
+            self.save_model(metrics)
+            
+            return metrics
+            
+        except Exception as e:
+            print(f"Erro no treinamento: {str(e)}")
+            self._model = self.get_default_model()
+            return False
     
     def predict(self, hours_ahead=1):
         """
@@ -189,140 +230,301 @@ class TemperaturePredictionModel:
         return predictions
 
 
-class FanOptimizationModel:
+class FanOptimizationModel(BaseMLModel):
     """
     Modelo para otimização inteligente do controle do ventilador
     """
     
     def __init__(self):
-        self.model = None
-        self.temperature_threshold = 25.0
+        super().__init__(model_type='fan_optimization')
+        self._scaler = None
+        self.temperature_threshold = 24.0  # Temperatura mais confortável
+        
+    def get_default_model(self):
+        """
+        Retorna um modelo padrão quando nenhum modelo salvo está disponível
+        """
+        # Usar RandomForest para melhor generalização
+        return RandomForestRegressor(
+            n_estimators=50,
+            max_depth=5,
+            random_state=42
+        )
+
+    @property
+    def scaler(self):
+        if self._scaler is None:
+            self._scaler = StandardScaler()
+        return self._scaler
     
-    def get_training_data(self, days_back=30):
+    def create_dummy_data(self):
         """
-        Obtém dados de eficiência do ventilador
+        Cria dados sintéticos básicos para treino inicial com as mesmas colunas dos dados reais
         """
-        end_date = timezone.now()
-        start_date = end_date - timedelta(days=days_back)
-        
-        # Buscar estados do ventilador
-        fan_states = FanState.objects.filter(
-            timestamp__gte=start_date,
-            timestamp__lte=end_date
-        ).order_by('timestamp')
-        
+        # Criar 50 amostras de dados sintéticos
+        n_samples = 50
         data = []
-        for i in range(len(fan_states) - 1):
-            current_state = fan_states[i]
-            next_state = fan_states[i + 1]
+        
+        # Gerar dados aleatórios que seguem regras simples
+        for _ in range(n_samples):
+            # Temperatura inicial entre 20°C e 35°C
+            temp_before = np.random.uniform(20, 35)
+            hour = np.random.randint(0, 24)
+            day_of_week = np.random.randint(0, 7)
             
-            if current_state.state:  # Se o ventilador está ligado
-                # Calcular duração do ciclo
-                duration = (next_state.timestamp - current_state.timestamp).total_seconds() / 60
+            # Define duração baseada na temperatura
+            if temp_before > self.temperature_threshold:
+                duration_minutes = max(5, min(60, (temp_before - self.temperature_threshold) * 5))
+            else:
+                duration_minutes = 0
                 
-                # Pegar temperatura no início do ciclo
-                temp_before = Reading.objects.filter(
-                    timestamp__lte=current_state.timestamp
-                ).order_by('-timestamp').first()
-                
-                # Pegar temperatura no fim do ciclo
-                temp_after = Reading.objects.filter(
-                    timestamp__gte=next_state.timestamp
-                ).order_by('timestamp').first()
-                
-                # Pegar temperaturas durante o ciclo
-                temps_during = Reading.objects.filter(
-                    timestamp__gt=current_state.timestamp,
-                    timestamp__lt=next_state.timestamp
-                ).values_list('temperature', flat=True)
-                
-                if temp_before and temp_after and temps_during:
-                    temp_during_avg = sum(temps_during) / len(temps_during) if temps_during else None
-                    
-                    if temp_during_avg:
-                        data.append({
-                            'temp_before': temp_before.temperature,
-                            'temp_during': temp_during_avg,
-                            'temp_after': temp_after.temperature,
-                            'duration_minutes': duration,
-                            'hour': current_state.timestamp.hour,
-                            'day_of_week': current_state.timestamp.weekday(),
-                            'cooling_efficiency': temp_before.temperature - temp_after.temperature
-                        })
+            # Simula redução de temperatura baseada na duração
+            # Quanto maior a duração, maior a redução, mas com um limite
+            cooling_efficiency = min(5, duration_minutes * 0.1) if duration_minutes > 0 else 0
+            
+            data.append({
+                'temp_before': temp_before,
+                'duration_minutes': duration_minutes,
+                'hour': hour,
+                'day_of_week': day_of_week,
+                'cooling_efficiency': cooling_efficiency
+            })
         
         return pd.DataFrame(data)
     
-    def train(self, days_back=30):
+    def get_training_data(self, days_back=30):
         """
-        Treina modelo de otimização do ventilador
+        Obtém dados de eficiência do ventilador de forma otimizada
         """
-        df = self.get_training_data(days_back)
+        data = []
         
-        if len(df) < 5:
-            raise ValueError("Dados insuficientes para treinamento de otimização")
+        try:
+            # Limita o período de busca
+            end_date = timezone.now()
+            start_date = end_date - timedelta(days=days_back)
+            
+            # Busca limitada de estados do ventilador
+            fan_states = list(FanState.objects.filter(
+                timestamp__gte=start_date,
+                timestamp__lte=end_date,
+                state=True  # Só estados ativos
+            ).order_by('timestamp')[:50])  # Limite máximo de registros
+            
+            if not fan_states:
+                print("Sem dados de ventilador suficientes. Usando dados sintéticos.")
+                return self.create_dummy_data()
+            
+            # Processa os estados em lote
+            for i in range(len(fan_states) - 1):
+                current_state = fan_states[i]
+                next_state = fan_states[i + 1]
+                
+                # Ignora ciclos muito longos
+                duration = (next_state.timestamp - current_state.timestamp).total_seconds() / 60
+                if duration > 60:  # Máximo 1 hora
+                    continue
+                
+                try:
+                    # Busca leituras de temperatura de forma otimizada
+                    readings = list(Reading.objects.filter(
+                        timestamp__gte=current_state.timestamp,
+                        timestamp__lte=next_state.timestamp
+                    ).order_by('timestamp')[:30])  # Limite de leituras por ciclo
+                    
+                    if len(readings) < 3:
+                        continue
+                    
+                    temp_before = readings[0].temperature
+                    temp_after = readings[-1].temperature
+                    temps_during = [r.temperature for r in readings[1:-1]]
+                    temp_during_avg = sum(temps_during) / len(temps_during)
+                    
+                    if temp_after < temp_before:  # Só considera ciclos com resfriamento
+                        cooling_efficiency = temp_before - temp_after
+                        data.append({
+                            'temp_before': temp_before,
+                            'duration_minutes': duration,
+                            'hour': current_state.timestamp.hour,
+                            'day_of_week': current_state.timestamp.weekday(),
+                            'cooling_efficiency': cooling_efficiency
+                        })
+                except Exception as e:
+                    print(f"Erro ao processar ciclo: {str(e)}")
+                    continue
+                    
+            if len(data) < 5:
+                print("Dados reais insuficientes. Usando dados sintéticos.")
+                return self.create_dummy_data()
+                
+        except Exception as e:
+            print(f"Erro ao buscar dados de treinamento: {str(e)}")
+            return self.create_dummy_data()
+            
+        return pd.DataFrame(data)
+    
+    def train(self, days_back=30, force_retrain=False):
+        """
+        Desativado em produção - use o script de treinamento separado
+        """
+        print("Treinamento desativado em produção")
+        return False
         
-        # Features para predizer eficiência de resfriamento
+    def _train_legacy(self, days_back=30, force_retrain=False):
+        """
+        Método legado mantido para referência e desenvolvimento
+        """
         features = ['temp_before', 'duration_minutes', 'hour', 'day_of_week']
-        X = df[features]
-        y = df['cooling_efficiency']
         
-        self.model = RandomForestRegressor(
-            n_estimators=50,
-            max_depth=8,
-            random_state=42
-        )
-        
-        self.model.fit(X, y)
-        
-        # Calcular métricas
-        y_pred = self.model.predict(X)
-        metrics = {
-            'mse': float(mean_squared_error(y, y_pred)),
-            'mae': float(mean_absolute_error(y, y_pred)),
-            'r2': float(r2_score(y, y_pred))
-        }
-        
-        return metrics
+        # Verificar cache
+        if not force_retrain and model_cache.get('fan_optimization'):
+            print("Usando modelo em cache")
+            self._model = model_cache.get('fan_optimization')
+            return True
+            
+        try:
+            # Obtém dados limitados a 7 dias
+            df = self.get_training_data(days_back=min(days_back, 7))
+            
+            # Verifica se precisa usar dados sintéticos
+            if len(df) < 5:
+                print("Usando dados sintéticos (dados insuficientes)")
+                df = self.create_dummy_data()
+                using_synthetic = True
+            else:
+                using_synthetic = False
+            
+            # Verifica features necessárias
+            if not all(feature in df.columns for feature in features):
+                print("Features ausentes no DataFrame, usando dados sintéticos")
+                df = self.create_dummy_data()
+                using_synthetic = True
+            
+            # Prepara dados para treino
+            X = df[features]
+            y = df['cooling_efficiency']
+            
+            # Escolhe e treina o modelo
+            if using_synthetic:
+                model = LinearRegression()
+            else:
+                model = RandomForestRegressor(n_estimators=20, max_depth=5)
+            
+            model.fit(X, y)
+            
+            # Avaliar modelo
+            y_pred = model.predict(X)
+            metrics = {
+                'mse': float(mean_squared_error(y, y_pred)),
+                'mae': float(mean_absolute_error(y, y_pred)),
+                'r2': float(r2_score(y, y_pred)),
+                'training_samples': int(len(X)),
+                'using_synthetic': using_synthetic
+            }
+            
+            # Salvar no cache e no disco
+            self._model = model
+            model_cache.set('fan_optimization', model)
+            self.save_model(metrics)
+            
+            return metrics
+            
+        except Exception as e:
+            print(f"Erro no treinamento: {str(e)}")
+            self._model = self.get_default_model()
+            return False
     
     def optimize_fan_duration(self, current_temp, current_hour):
         """
-        Sugere duração otimizada para ligar o ventilador
+        Sugere duração otimizada para ligar o ventilador usando modelo ML ou regras
         """
-        if self.model is None:
-            # Fallback para regra simples
-            if current_temp > self.temperature_threshold:
-                return max(5, (current_temp - self.temperature_threshold) * 10)
+        if current_temp <= self.temperature_threshold:
             return 0
-        
-        # Testar diferentes durações
-        durations = [5, 10, 15, 20, 30, 45, 60]
-        best_duration = 5
-        best_efficiency = 0
-        
-        for duration in durations:
-            predicted_efficiency = self.model.predict([[
-                current_temp, duration, current_hour, datetime.now().weekday()
-            ]])[0]
             
-            if predicted_efficiency > best_efficiency:
-                best_efficiency = predicted_efficiency
-                best_duration = duration
-        
-        return best_duration if current_temp > self.temperature_threshold else 0
+        try:
+            if self.model is None:
+                return self._simple_rule(current_temp)
+                
+            # Mais opções de duração
+            durations = [5, 10, 15, 20, 25, 30, 35, 40]
+            best_duration = None
+            best_efficiency = float('-inf')  # Começar com -infinito
+            
+            features = {
+                'temp_before': current_temp,
+                'hour': current_hour,
+                'day_of_week': datetime.now().weekday()
+            }
+            
+            # Testa diferentes durações
+            for duration in durations:
+                try:
+                    X_pred = pd.DataFrame([{
+                        **features,
+                        'duration_minutes': duration
+                    }])
+                    
+                    predicted_efficiency = float(self.model.predict(X_pred)[0])
+                    
+                    # Nova fórmula de eficiência que equilibra resfriamento e energia
+                    temp_reduction_weight = 2.0  # Peso para redução de temperatura
+                    energy_penalty = duration / 60  # Penalidade por consumo de energia
+                    
+                    # Score que favorece maior redução de temperatura com menor tempo
+                    efficiency_score = (predicted_efficiency * temp_reduction_weight) - energy_penalty
+                    
+                    if efficiency_score > best_efficiency:
+                        best_efficiency = efficiency_score
+                        best_duration = duration
+                except Exception as e:
+                    logger.warning(f"Erro ao testar duração {duration}: {str(e)}")
+                    continue
+            
+            if best_duration is not None:
+                return best_duration
+                
+            return self._simple_rule(current_temp)
+            
+        except Exception as e:
+            logger.error(f"Erro na otimização: {str(e)}")
+            return self._simple_rule(current_temp)
+    
+    def _simple_rule(self, current_temp):
+        """
+        Regra simples e conservadora baseada na temperatura
+        """
+        if current_temp <= self.temperature_threshold:
+            return 0
+        elif current_temp <= 25:
+            return 10  # 10 minutos para temperaturas moderadas
+        elif current_temp <= 27:
+            return 20  # 20 minutos para temperaturas altas
+        else:
+            return 30  # 30 minutos para temperaturas muito altas
 
 
-class AnomalyDetectionModel:
+class AnomalyDetectionModel(BaseMLModel):
     """
-    Modelo para detecção de anomalias nos dados dos sensores
+    Modelo para detecção de anomalias nos dados dos sensores com configurações otimizadas
     """
     
     def __init__(self):
-        self.model = IsolationForest(
-            contamination=0.1,  # 10% de dados anômalos esperados
-            random_state=42
-        )
-        self.scaler = StandardScaler()
+        super().__init__(model_type='anomaly_detection')
+        self._scaler = StandardScaler()
+        self.feature_names = ['temperature', 'hour', 'temp_diff', 'temp_deviation']
+        self.normal_range = {'min': 18, 'max': 32}  # Faixa mais realista
         self.is_fitted = False
+        
+    def get_default_model(self):
+        """
+        Retorna um modelo padrão quando nenhum modelo salvo está disponível
+        """
+        return IsolationForest(
+            contamination=0.05,  # 5% de anomalias esperadas
+            n_estimators=100,    # Mais árvores para melhor precisão
+            max_samples='auto',  # Adapta automaticamente ao tamanho dos dados
+            random_state=42,
+            n_jobs=-1            # Usa todos os cores disponíveis
+        )
     
     def get_training_data(self, days_back=30):
         """
@@ -350,160 +552,133 @@ class AnomalyDetectionModel:
         
         return df.dropna()
     
-    def train(self, days_back=30):
+    def train(self, days_back=30, force_retrain=False):
         """
-        Treina modelo de detecção de anomalias
+        Desativado em produção - use o script de treinamento separado
         """
-        df = self.get_training_data(days_back)
+        print("Treinamento desativado em produção")
+        return False
         
-        features = ['temperature', 'hour', 'temp_diff', 'temp_deviation']
-        X = df[features]
-        
-        # Normalizar dados
-        X_scaled = self.scaler.fit_transform(X)
-        
-        # Treinar modelo
-        self.model.fit(X_scaled)
-        self.is_fitted = True
-        
-        # Avaliar em dados de treinamento
-        predictions = self.model.predict(X_scaled)
-        anomaly_ratio = (predictions == -1).sum() / len(predictions)
-        
-        return {
-            'anomaly_ratio': float(anomaly_ratio),
-            'total_samples': int(len(X)),
-            'anomalies_detected': int((predictions == -1).sum())
-        }
+    def _train_legacy(self, days_back=30, force_retrain=False):
+        """
+        Método legado mantido para referência e desenvolvimento
+        """
+        # Verificar cache
+        if not force_retrain and model_cache.get('anomaly_detection'):
+            print("Usando modelo em cache")
+            self._model = model_cache.get('anomaly_detection')
+            self.is_fitted = True
+            return True
+            
+        try:
+            df = self.get_training_data(days_back)
+            
+            # Usar feature names definidos na inicialização
+            X = df[self.feature_names].copy()
+            
+            # Garantir que não há valores nulos
+            X = X.fillna(0)
+            
+            # Normalizar dados (fit_transform para treino)
+            X_scaled = self._scaler.fit_transform(X)
+            
+            # Treinar modelo
+            model = self.get_default_model()
+            model.fit(X_scaled)
+            
+            # Avaliar em dados de treinamento
+            predictions = model.predict(X_scaled)
+            scores = model.score_samples(X_scaled)
+            anomaly_ratio = (predictions == -1).sum() / len(predictions)
+            
+            metrics = {
+                'anomaly_ratio': float(anomaly_ratio),
+                'total_samples': int(len(X)),
+                'anomalies_detected': int((predictions == -1).sum()),
+                'average_score': float(np.mean(scores)),
+                'min_score': float(np.min(scores)),
+                'max_score': float(np.max(scores))
+            }
+            
+            # Salvar no cache e no disco
+            self._model = model
+            self.is_fitted = True
+            
+            # Salvar também o scaler junto com o modelo
+            model_data = {
+                'model': model,
+                'scaler': self._scaler,
+                'is_fitted': True
+            }
+            
+            model_cache.set('anomaly_detection', model_data)
+            self.save_model(metrics)
+            
+            return metrics
+            
+        except Exception as e:
+            print(f"Erro no treinamento: {str(e)}")
+            self._model = self.get_default_model()
+            self.is_fitted = False
+            return False
     
     def detect_anomaly(self, temperature, hour=None):
         """
-        Detecta se uma leitura é anômala
+        Detecta se uma temperatura é anômala usando regras de negócio e modelo ML
         """
+        # 1. Verificação baseada em regras de negócio primeiro
+        if temperature < self.normal_range['min'] or temperature > self.normal_range['max']:
+            return {
+                'is_anomaly': True,
+                'anomaly_score': -1.0,
+                'confidence': 1.0,
+                'reason': 'temperature_out_of_range'
+            }
+            
         if not self.is_fitted:
-            raise ValueError("Modelo não foi treinado")
+            return {
+                'is_anomaly': False,
+                'anomaly_score': 0.0,
+                'confidence': 0.5,
+                'reason': 'model_not_fitted'
+            }
         
         if hour is None:
             hour = datetime.now().hour
-        
-        # Calcular features básicas (sem dados históricos completos)
-        temp_diff = 0  # Simplificado
-        temp_deviation = 0  # Simplificado
-        
-        X = np.array([[temperature, hour, temp_diff, temp_deviation]])
-        X_scaled = self.scaler.transform(X)
-        
-        prediction = self.model.predict(X_scaled)[0]
-        anomaly_score = self.model.score_samples(X_scaled)[0]
-        
-        return {
-            'is_anomaly': prediction == -1,
-            'anomaly_score': anomaly_score,
-            'confidence': abs(anomaly_score)
-        }
+            
+        try:
+            # Calcular features básicas (sem dados históricos completos)
+            temp_diff = 0  # Simplificado
+            temp_deviation = 0  # Simplificado
+            
+            X = np.array([[temperature, hour, temp_diff, temp_deviation]])
+            X_scaled = self.scaler.transform(X)
+            
+            prediction = self.model.predict(X_scaled)[0]
+            anomaly_score = self.model.score_samples(X_scaled)[0]
+            
+            # Determina se é uma anomalia baseado no score
+            is_anomaly = prediction == -1 and abs(anomaly_score) > 0.5
+            
+            return {
+                'is_anomaly': is_anomaly,
+                'anomaly_score': float(anomaly_score),
+                'confidence': float(abs(anomaly_score)),
+                'reason': 'ml_prediction' if is_anomaly else 'normal'
+            }
+        except Exception as e:
+            # Fallback para regra simples em caso de erro
+            return {
+                'is_anomaly': False,
+                'anomaly_score': 0,
+                'confidence': 0.5,
+                'reason': f'error: {str(e)}'
+            }
 
 
-def train_all_models():
+def train_all_models(force_retrain=False):
     """
-    Treina todos os modelos de ML disponíveis
+    Função mantida para compatibilidade, mas desativada em produção
     """
-    results = {}
-    
-    try:
-        # Modelo de predição de temperatura
-        temp_model = TemperaturePredictionModel()
-        temp_metrics = temp_model.train()
-        
-        # Buscar ou criar modelo
-        ml_model_temp, created = MLModel.objects.get_or_create(
-            model_type="temperature_prediction",
-            version="1.0",
-            defaults={
-                'name': "Predição de Temperatura",
-                'description': "Modelo para predizer temperatura baseado em dados históricos",
-                'is_active': True,
-                'last_trained': timezone.now()
-            }
-        )
-        
-        # Atualizar métricas
-        ml_model_temp.mse = temp_metrics['mse']
-        ml_model_temp.mae = temp_metrics['mae']
-        ml_model_temp.r2_score = temp_metrics['r2']
-        ml_model_temp.last_trained = timezone.now()
-        ml_model_temp.is_active = True
-        ml_model_temp.save()
-        
-        ml_model_temp.save_model(temp_model.model)
-        
-        results['temperature_prediction'] = temp_metrics
-        
-    except Exception as e:
-        results['temperature_prediction'] = {'error': str(e)}
-    
-    try:
-        # Modelo de otimização do ventilador
-        fan_model = FanOptimizationModel()
-        fan_metrics = fan_model.train()
-        
-        ml_model_fan, created = MLModel.objects.get_or_create(
-            model_type="fan_optimization",
-            version="1.0",
-            defaults={
-                'name': "Otimização de Ventilador",
-                'description': "Modelo para otimizar controle do ventilador",
-                'is_active': True,
-                'last_trained': timezone.now()
-            }
-        )
-        
-        # Atualizar métricas
-        ml_model_fan.mse = fan_metrics['mse']
-        ml_model_fan.mae = fan_metrics['mae']
-        ml_model_fan.r2_score = fan_metrics['r2']
-        ml_model_fan.last_trained = timezone.now()
-        ml_model_fan.is_active = True
-        ml_model_fan.save()
-        
-        ml_model_fan.save_model(fan_model.model)
-        
-        results['fan_optimization'] = fan_metrics
-        
-    except Exception as e:
-        results['fan_optimization'] = {'error': str(e)}
-    
-    try:
-        # Modelo de detecção de anomalias
-        anomaly_model = AnomalyDetectionModel()
-        anomaly_metrics = anomaly_model.train()
-        
-        ml_model_anomaly, created = MLModel.objects.get_or_create(
-            model_type="anomaly_detection",
-            version="1.0",
-            defaults={
-                'name': "Detecção de Anomalias",
-                'description': "Modelo para detectar anomalias nos sensores",
-                'is_active': True,
-                'last_trained': timezone.now()
-            }
-        )
-        
-        # Atualizar métricas
-        ml_model_anomaly.accuracy = 1 - anomaly_metrics['anomaly_ratio']
-        ml_model_anomaly.last_trained = timezone.now()
-        ml_model_anomaly.is_active = True
-        ml_model_anomaly.save()
-        
-        # Salvar o modelo com scaler
-        model_data = {
-            'model': anomaly_model.model,
-            'scaler': anomaly_model.scaler
-        }
-        ml_model_anomaly.save_model(model_data)
-        
-        results['anomaly_detection'] = anomaly_metrics
-        
-    except Exception as e:
-        results['anomaly_detection'] = {'error': str(e)}
-    
-    return results
+    print("Treinamento desativado em produção - modelos já estão pré-treinados")
+    return {}

@@ -20,6 +20,48 @@ class MLIntegrationService:
     """
     
     @staticmethod
+    def get_optimized_temperature_limit(current_temp):
+        """
+        Calcula o limite de temperatura otimizado baseado nas condições atuais
+        
+        Args:
+            current_temp: Temperatura atual
+            
+        Returns:
+            float: Limite de temperatura otimizado ou None se não puder calcular
+        """
+        try:
+            fan_model = FanOptimizationModel()
+            # Carregar modelo ativo
+            ml_model = MLModel.objects.filter(
+                model_type='fan_optimization',
+                is_active=True
+            ).first()
+            
+            if not ml_model:
+                return None
+                
+            loaded_model = ml_model.load_model()
+            if loaded_model:
+                fan_model.model = loaded_model
+                
+                # Calcular limite dinâmico
+                base_limit = 25.0  # Limite base
+                
+                # Ajustar limite baseado na eficiência do resfriamento
+                efficiency = fan_model.estimate_cooling_efficiency(current_temp)
+                if efficiency:
+                    # Ajusta o limite entre 23°C e 27°C baseado na eficiência
+                    dynamic_limit = base_limit - (efficiency * 2) + 2
+                    return max(23.0, min(27.0, dynamic_limit))
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erro ao calcular limite de temperatura: {str(e)}")
+            return None
+    
+    @staticmethod
     def process_new_reading(reading):
         """
         Processa uma nova leitura de sensor com ML
@@ -34,21 +76,34 @@ class MLIntegrationService:
                 reading.timestamp.hour
             )
             
-            # 2. Otimizar ventilador se necessário
-            if reading.temperature > 24.0:  # Limiar configurável
+            # 2. Predição de temperatura futura
+            prediction = MLIntegrationService.predict_temperature(
+                reading.temperature,
+                reading.timestamp.hour
+            )
+            
+            # 3. Otimizar ventilador baseado na temperatura atual e predita
+            should_optimize = (
+                reading.temperature > 24.0 or  # Temperatura atual alta
+                (prediction and prediction.get('predicted_temperature', 0) > 26.0)  # Previsão alta
+            )
+            
+            if should_optimize:
                 fan_optimization = MLIntegrationService.optimize_fan_control(
                     reading.temperature,
-                    reading.timestamp.hour
+                    reading.timestamp.hour,
+                    predicted_temp=prediction.get('predicted_temperature') if prediction else None
                 )
                 
                 # Se ML sugere ligar o ventilador, atualizar configuração
                 if fan_optimization.get('should_turn_on', False):
                     MLIntegrationService.update_fan_config(fan_optimization)
             
-            # 3. Log dos resultados
+            # 4. Log dos resultados
             logger.info(
                 f"Leitura processada: {reading.temperature}°C - "
-                f"Anomalia: {anomaly_result.get('is_anomaly', False)}"
+                f"Anomalia: {anomaly_result.get('is_anomaly', False)} - "
+                f"Previsão: {prediction.get('predicted_temperature', 'N/A')}°C"
             )
             
         except Exception as e:
@@ -115,11 +170,73 @@ class MLIntegrationService:
         return serialize_ml_output(result)
     
     @staticmethod
-    def optimize_fan_control(current_temperature, current_hour):
+    def optimize_fan_control(current_temperature, current_hour, predicted_temp=None):
         """
-        Otimiza controle do ventilador usando ML
+        Otimiza controle do ventilador usando ML e previsão de temperatura
+        
+        Args:
+            current_temperature: Temperatura atual
+            current_hour: Hora atual (0-23)
+            predicted_temp: Temperatura prevista para próxima hora (opcional)
         """
         try:
+            # Obter configuração atual
+            try:
+                config = DeviceConfig.objects.get(device_id='default-device')
+            except DeviceConfig.DoesNotExist:
+                logger.warning("Configuração não encontrada. Criando padrão...")
+                config = DeviceConfig.objects.create(
+                    device_id='default-device',
+                    ml_control=True,
+                    start_hour=timezone.now().replace(hour=8, minute=0),
+                    end_hour=timezone.now().replace(hour=22, minute=0)
+                )
+            
+            # Verificar se ML Control está ativado
+            if not config.ml_control:
+                logger.info("ML Control desativado nas configurações")
+                return {
+                    'recommended_duration_minutes': 0,
+                    'should_turn_on': False,
+                    'method': 'ml_disabled',
+                    'message': 'Controle ML desativado nas configurações'
+                }
+            
+            # Verificar se está dentro do horário permitido
+            current_time = timezone.localtime().time()
+            start_time = config.start_hour
+            end_time = config.end_hour
+            
+            # Se o horário atual está fora do período permitido, não liga
+            if start_time < end_time:  # Período normal (ex: 8:00 - 22:00)
+                if current_time < start_time or current_time > end_time:
+                    return {
+                        'recommended_duration_minutes': 0,
+                        'should_turn_on': False,
+                        'method': 'outside_hours',
+                        'message': f'Fora do horário permitido ({start_time.strftime("%H:%M")} - {end_time.strftime("%H:%M")})'
+                    }
+            else:  # Período que cruza meia-noite (ex: 22:00 - 06:00)
+                if current_time > end_time and current_time < start_time:
+                    return {
+                        'recommended_duration_minutes': 0,
+                        'should_turn_on': False,
+                        'method': 'outside_hours',
+                        'message': f'Fora do horário permitido ({start_time.strftime("%H:%M")} - {end_time.strftime("%H:%M")})'
+                    }
+            
+            # Verificar se o ventilador já está em um ciclo de ML
+            if config.ml_start_time:
+                time_since_start = timezone.now() - config.ml_start_time
+                if time_since_start.total_seconds() < (config.ml_duration * 60):
+                    # Ainda dentro do período recomendado, não faz nada
+                    return {
+                        'recommended_duration_minutes': 0,
+                        'should_turn_on': False,
+                        'method': 'cooling_in_progress',
+                        'message': f'Ciclo de resfriamento em andamento: {config.ml_duration}min'
+                    }
+
             # Buscar modelo ativo
             ml_model = MLModel.objects.filter(
                 model_type='fan_optimization',
@@ -127,9 +244,9 @@ class MLIntegrationService:
             ).first()
             
             if not ml_model:
-                # Fallback para regra simples
-                if current_temperature > 25.0:
-                    duration = max(5, (current_temperature - 25.0) * 10)
+                # Fallback para regra simples mais conservadora
+                if current_temperature > 27.0:  # Aumentado o limite
+                    duration = max(5, (current_temperature - 27.0) * 15)
                     result = {
                         'recommended_duration_minutes': int(duration),
                         'should_turn_on': True,
@@ -146,11 +263,17 @@ class MLIntegrationService:
             
             # Usar modelo ML
             fan_model = FanOptimizationModel()
-            fan_model.model = ml_model.load_model()
+            loaded_model = ml_model.load_model()
             
-            if fan_model.model:
+            if loaded_model and isinstance(loaded_model, dict):
+                fan_model.model = loaded_model['model']
+                fan_model.scaler = loaded_model.get('scaler')
+                
+                # Considera temperatura prevista se disponível
+                temp_to_use = max(current_temperature, predicted_temp or 0)
+                
                 optimal_duration = fan_model.optimize_fan_duration(
-                    current_temperature, 
+                    temp_to_use,
                     current_hour
                 )
                 
@@ -158,7 +281,9 @@ class MLIntegrationService:
                     'recommended_duration_minutes': int(optimal_duration),
                     'should_turn_on': optimal_duration > 0,
                     'method': 'ml_model',
-                    'current_temperature': current_temperature
+                    'current_temperature': current_temperature,
+                    'predicted_temperature': predicted_temp,
+                    'temperature_used': temp_to_use
                 }
                 
                 # Serializa resultado antes de salvar
@@ -216,15 +341,14 @@ class MLIntegrationService:
             # Ativar ventilador se ML recomenda
             duration = optimization_result.get('recommended_duration_minutes', 10)
             
-            # Atualizar campos de controle ML
-            if duration > 0:
+            # Atualizar campos de controle ML apenas se ML estiver ativado
+            if duration > 0 and config.ml_control:
                 now = timezone.now()
-                config.ml_control = True
                 config.ml_duration = duration
                 config.ml_start_time = now
                 config.force_on = True
                 # Salvar explicitamente os campos que foram alterados
-                config.save(update_fields=['ml_control', 'ml_duration', 'ml_start_time', 'force_on'])
+                config.save(update_fields=['ml_duration', 'ml_start_time', 'force_on'])
                 
                 logger.info(
                     f"Ventilador ativado por ML - Duração recomendada: {duration} min - Início: {now.strftime('%H:%M:%S')}"
@@ -376,6 +500,78 @@ class MLIntegrationService:
             logger.error(f"Erro ao gerar recomendações: {str(e)}")
         
         return serialize_ml_output(recommendations)
+
+    @staticmethod
+    def predict_temperature(current_temperature, current_hour):
+        """
+        Prediz a temperatura para a próxima hora usando modelo ML
+        """
+        try:
+            # Buscar modelo ativo
+            ml_model = MLModel.objects.filter(
+                model_type='temperature_prediction',
+                is_active=True
+            ).first()
+            
+            if not ml_model:
+                # Fallback para regra simples
+                next_hour = (current_hour + 1) % 24
+                # Ajuste simples baseado no horário do dia
+                if 6 <= next_hour <= 12:  # Manhã: temperatura tende a subir
+                    predicted = current_temperature + 0.5
+                elif 13 <= next_hour <= 18:  # Tarde: temperatura estável ou subindo
+                    predicted = current_temperature + 0.2
+                else:  # Noite/Madrugada: temperatura tende a cair
+                    predicted = current_temperature - 0.3
+                
+                result = {
+                    'predicted_temperature': round(predicted, 1),
+                    'confidence': 0.5,
+                    'method': 'rule_based'
+                }
+                return serialize_ml_output(result)
+            
+            # Usar modelo ML
+            temp_model = TemperaturePredictionModel()
+            loaded_model = ml_model.load_model()
+            
+            if loaded_model and isinstance(loaded_model, dict):
+                temp_model.model = loaded_model['model']
+                temp_model.scaler = loaded_model.get('scaler')  # Pode ser None
+                
+                prediction = temp_model.predict_next_hour(
+                    current_temperature,
+                    current_hour
+                )
+                
+                result = {
+                    'predicted_temperature': round(float(prediction['temperature']), 1),
+                    'confidence': float(prediction.get('confidence', 0.7)),
+                    'method': 'ml_model'
+                }
+                
+                # Salvar predição
+                MLPrediction.objects.create(
+                    model=ml_model,
+                    input_data={
+                        'current_temperature': float(current_temperature),
+                        'hour': int(current_hour)
+                    },
+                    prediction=result,
+                    confidence=result['confidence']
+                )
+                
+                return serialize_ml_output(result)
+            
+        except Exception as e:
+            logger.error(f"Erro na predição de temperatura: {str(e)}")
+        
+        # Fallback em caso de erro
+        return serialize_ml_output({
+            'predicted_temperature': current_temperature,  # Mantém a mesma
+            'confidence': 0,
+            'method': 'error_fallback'
+        })
 
 
 # Funções utilitárias para uso em outros apps

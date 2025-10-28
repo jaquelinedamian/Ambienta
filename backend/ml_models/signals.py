@@ -15,16 +15,18 @@ def process_reading_with_ml(sender, instance, created, **kwargs):
     """
     Signal para processar automaticamente novas leituras com ML
     """
-    if created:  # Apenas para novas leituras
+    if created and not getattr(instance, '_processing_ml', False):
         try:
-            # Processar a leitura com ML em background
-            # Em produção, considere usar Celery para tarefas assíncronas
+            # Marca a instância para evitar loops
+            instance._processing_ml = True
+            
+            # Processar a leitura com ML
             process_sensor_reading(instance)
             
-            logger.info(f"Leitura {instance.id} processada com ML automaticamente")
+            logger.info(f"Leitura {instance.id} processada com ML")
             
         except Exception as e:
-            # Log do erro, mas não interrompe o salvamento da leitura
-            logger.error(
-                f"Erro ao processar leitura {instance.id} com ML: {str(e)}"
-            )
+            logger.error(f"Erro ao processar leitura {instance.id} com ML: {str(e)}")
+        finally:
+            # Remove a marca
+            instance._processing_ml = False

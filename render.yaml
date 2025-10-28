@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ambienta
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: >
+      sh -c '
+        cd backend &&
+        python manage.py migrate &&
+        python manage.py train_ml_models --skip-if-exists &&
+        gunicorn --bind 0.0.0.0:$PORT Ambienta.wsgi:application --timeout 120 --workers 2
+      '
