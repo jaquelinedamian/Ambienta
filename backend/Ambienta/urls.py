@@ -7,13 +7,19 @@ from django.conf.urls.static import static
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
 urlpatterns = [
+    # URLs de Administração e Frontend Principal
     path('admin/', admin.site.urls),
     path('', include('home.urls')),
     path('accounts/', include('accounts.urls')),
     path('accounts/', include('allauth.urls')),  # URLs do django-allauth
     path('dashboard/', include('dashboard.urls')),
-    path('sensors/', include('sensors.urls')),
-    path('ml/', include('ml_models.urls')),
+    
+    # >>> CORREÇÃO CRÍTICA PARA A API DO ESP8266: ADICIONAR O PREFIXO 'API/' <<<
+    # O ESP8266 envia /api/sensors/readings/
+    path('api/', include('sensors.urls')),
+    
+    # Adicionando o prefixo 'api/' para as rotas de Machine Learning também
+    path('api/ml/', include('ml_models.urls')),
 ]
 
 # ESTA É A CORREÇÃO PRINCIPAL: Adicionar o manuseio de arquivos estáticos e de mídia em modo DEBUG
@@ -23,4 +29,3 @@ if settings.DEBUG:
 
     # 2. Manuseio de arquivos de mídia (MEDIA)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
