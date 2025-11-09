@@ -1,26 +1,28 @@
-from django.urls import path
-# ATENÇÃO: Verifique se estes nomes de classes estão corretos no seu views.py
-from .views import (
-    ReadingCreateAPIView, 
-    ReadingListAPIView, 
-    FanStateAPIView, 
-    DeviceConfigUpdateView, 
-    FanControlAPIView
-) 
-
-app_name = 'sensors' 
+from django.contrib import admin
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
 urlpatterns = [
-    # 1. Rota para POST de Temperatura: /api/sensors/readings/
-    path('sensors/readings/', ReadingCreateAPIView.as_view(), name='receive_data'),
+    # URLs de Frontend
+    path('admin/', admin.site.urls),
+    path('', include('home.urls')),
+    path('accounts/', include('accounts.urls')),
+    path('accounts/', include('allauth.urls')),
+    path('dashboard/', include('dashboard.urls')),
     
-    # 2. Rota para GET/PUT do Estado do Ventilador: /api/sensors/fan-state/
-    path('sensors/fan-state/', FanStateAPIView.as_view(), name='fan_state'),
+    # Rota antiga (CONFLITANTE), desabilitada:
+    # path('sensors/', include('sensors.urls')),
     
-    # 3. Rota para controle manual (GET/PUT/POST): /api/sensors/control-fan/
-    path('sensors/control-fan/', FanControlAPIView.as_view(), name='control-fan'),
+    # === ROTA CORRIGIDA PARA O ESP8266: /api/ ===
+    # Esta linha faz com que as rotas em sensors/urls.py sejam acessadas via /api/
+    path('api/', include('sensors.urls')),
     
-    # Rotas de listagem para Dashboard/Frontend
-    path('sensors/data/', ReadingListAPIView.as_view(), name='list_data'),
-    path('sensors/config/', DeviceConfigUpdateView.as_view(), name='config'),
+    path('ml/', include('ml_models.urls')),
 ]
+
+# Configurações de DEBUG
+if settings.DEBUG:
+    urlpatterns += staticfiles_urlpatterns()
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
