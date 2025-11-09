@@ -14,18 +14,15 @@ urlpatterns = [
     path('accounts/', include('allauth.urls')),  # URLs do django-allauth
     path('dashboard/', include('dashboard.urls')),
     
-    # >>> CORREÇÃO CRÍTICA PARA A API DO ESP8266: ADICIONAR O PREFIXO 'API/' <<<
-    # O ESP8266 envia /api/sensors/readings/
+
     path('api/', include('sensors.urls')),
-    
-    # Adicionando o prefixo 'api/' para as rotas de Machine Learning também
+
     path('api/ml/', include('ml_models.urls')),
 ]
 
-# ESTA É A CORREÇÃO PRINCIPAL: Adicionar o manuseio de arquivos estáticos e de mídia em modo DEBUG
 if settings.DEBUG:
-    # 1. Manuseio de arquivos estáticos de APPS e STATICFILES_DIRS (CORREÇÃO)
+   
     urlpatterns += staticfiles_urlpatterns()
 
-    # 2. Manuseio de arquivos de mídia (MEDIA)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+   
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) 
